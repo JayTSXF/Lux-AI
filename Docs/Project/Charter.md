@@ -46,11 +46,18 @@ The core problems involve **reinforcement learning (RL)**, **imitation learning*
 ## Architecture
 
 ## Plan
+1. **Research & Design:** Study game mechanics and design the AI agent. 
+2. **Development:** Implement algorithms and reinforcement learning strategies. 
+3. **Training & Testing :** Train and refine the agent’s performance across different scenarios. 
+4. **Evaluation & Submission:** Finalize performance analysis, prepare submission, and compete. 
 
 ## Personnel
 
 ## Communication
-
+- **Slack** for real-time communication. 
+- **Jira** for task and project management. 
+- **GitHub** for version control and code collaboration. 
+- **Regular meetings** to review progress and address challenges.
 
 
 
