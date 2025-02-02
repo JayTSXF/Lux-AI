@@ -44,13 +44,54 @@ The core problems involve **reinforcement learning (RL)**, **imitation learning*
 
 
 ## Architecture
-There are two primary data sources for this project: environment data and episode replay data. Both include information about agent positions, environmental hazards, relics, and energy tiles. The environment data is hosted within the LuxAIGym environment itself, while episode replay data is stored in JSON files. These JSON files can be parsed and processed by our scripts to train the model but will only be utilized in the later stages of the project. The final deliverable will be a zip file containing all necessary functions and configurations to run the model within LuxAIGym. Users can integrate this zip file directly with their existing Python environment 
+There are two primary data sources for this project: environment data and episode replay data. Both contain information on agent positions, environmental hazards, relics, and energy tiles. The environment data resides within the LuxAIGym framework, while episode replay data is stored in JSON files.
+
+Initially, the model will be trained on environment data directly from LuxAIGym. In later stages, the project will leverage the JSON-based episode replay data by parsing it into 2D tensors, which then inform model training and fine-tuning. This offline replay data allows for additional experimentation and analysis beyond the live environment.
+
+The final deliverable will be packaged as a zip file containing all required scripts, dependencies, and configuration files needed to run the model. Users can integrate this package seamlessly into their existing Python environment—whether on a local machine or a cloud-based server—ensuring easy testing.
 
 ## Plan
-1. **Research & Design:** Study game mechanics and design the AI agent. 
-2. **Development:** Implement algorithms and reinforcement learning strategies. 
-3. **Training & Testing :** Train and refine the agent’s performance across different scenarios. 
-4. **Evaluation & Submission:** Finalize performance analysis, prepare submission, and compete. 
+1. #Research & Design
+Understand the Game Mechanics: Examine Lux AI's rules and objectives, including how agents interact with environment hazards, relics, and energy tiles.
+Data Exploration:
+Review environment data stored in LuxAIGym to understand its structure (e.g., map dimensions, unit attributes).
+Inspect JSON-based replay data for details on agent movements, rewards, and actions across different episodes.
+Algorithm Selection: Decide on the core reinforcement learning (RL) methods (e.g., PPO, SAC, offline RL, or imitation learning approaches) based on the complexity of the state/action space and available replay data.
+Design the Agent Architecture:
+Plan the neural network structure (e.g., CNN for grid-based features, MLP for flattened data).
+Outline how different components (policy network, value function, replay buffer) fit together within the training pipeline.
+2. #Development
+Environment Integration:
+Set up a robust interface with LuxAIGym to obtain live environment data (e.g., agent positions, tile information).
+Ensure the framework can reset, step through, and render episodes for debugging and testing.
+Replay Data Handling:
+Implement scripts to parse JSON replays into 2D tensors, accommodating agent positions, hazards, relic locations, and energy distribution.
+Develop data loaders that can optionally provide offline replay data for model pre-training or fine-tuning.
+Algorithm & Model Implementation:
+Write modular code for RL algorithms (on-policy/off-policy) or imitation learning pipelines (e.g., behavior cloning).
+Integrate advanced features if needed (e.g., reward shaping, curriculum learning, or advanced exploration strategies).
+3. #Training & Testing
+Initial Training on Environment Data:
+Run baseline RL training directly within LuxAIGym to validate the agent’s ability to learn from the live environment.
+Log intermediate performance (scores, win rates, etc.) and track convergence.
+Utilizing Episode Replay Data (Later Stages):
+Introduce offline training or imitation learning using the JSON replay dataset.
+Convert these replays into 2D/3D tensors that mirror the input format used in live training.
+Compare performance gains from combining live environment data with replay data.
+Iterative Refinement:
+Perform hyperparameter tuning (learning rate, batch size, reward shaping) to optimize results.
+Evaluate different network architectures and data preprocessing techniques (e.g., normalization, embedding tile types).
+Robust Testing Regimen:
+Validate the agent’s performance across diverse scenarios (varying map sizes, hazard densities, and team configurations).
+Use automated scripts to run multiple trials and statistically assess improvement over time.
+4. #Evaluation & Submission
+Performance Analysis:
+Conduct final evaluations to measure reliability, average score, and win rates across official or custom test scenarios.
+Document any improvements gained by leveraging replay data versus environment-only training.
+Packaging & Deliverables:
+Package the final model—along with all necessary code, dependencies, and configurations—into a zip file.
+Provide clear instructions for running model inside LuxAIGym (e.g., Python environment setup, usage examples).
+
 
 ## Personnel
 
