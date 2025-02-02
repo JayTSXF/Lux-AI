@@ -51,7 +51,7 @@ Initially, the model will be trained on environment data directly from LuxAIGym.
 The final deliverable will be packaged as a zip file containing all required scripts, dependencies, and configuration files needed to run the model. Users can integrate this package seamlessly into their existing Python environment—whether on a local machine or a cloud-based server—ensuring easy testing.
 
 ## Plan
-1. #Research & Design
+1. # Research & Design
 Understand the Game Mechanics: Examine Lux AI's rules and objectives, including how agents interact with environment hazards, relics, and energy tiles.
 Data Exploration:
 Review environment data stored in LuxAIGym to understand its structure (e.g., map dimensions, unit attributes).
@@ -60,7 +60,7 @@ Algorithm Selection: Decide on the core reinforcement learning (RL) methods (e.g
 Design the Agent Architecture:
 Plan the neural network structure (e.g., CNN for grid-based features, MLP for flattened data).
 Outline how different components (policy network, value function, replay buffer) fit together within the training pipeline.
-2. #Development
+2. # Development
 Environment Integration:
 Set up a robust interface with LuxAIGym to obtain live environment data (e.g., agent positions, tile information).
 Ensure the framework can reset, step through, and render episodes for debugging and testing.
