@@ -44,6 +44,7 @@ The core problems involve **reinforcement learning (RL)**, **imitation learning*
 
 
 ## Architecture
+There are two primary data sources for this project: environment data and episode replay data. Both include information about agent positions, environmental hazards, relics, and energy tiles. The environment data is hosted within the LuxAIGym environment itself, while episode replay data is stored in JSON files. These JSON files can be parsed and processed by our scripts to train the model but will only be utilized in the later stages of the project. The final deliverable will be a zip file containing all necessary functions and configurations to run the model within LuxAIGym. Users can integrate this zip file directly with their existing Python environment 
 
 ## Plan
 1. **Research & Design:** Study game mechanics and design the AI agent. 
