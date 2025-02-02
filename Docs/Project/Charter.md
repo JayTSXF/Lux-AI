@@ -51,44 +51,50 @@ Initially, the model will be trained on environment data directly from LuxAIGym.
 The final deliverable will be packaged as a zip file containing all required scripts, dependencies, and configuration files needed to run the model. Users can integrate this package seamlessly into their existing Python environment—whether on a local machine or a cloud-based server—ensuring easy testing.
 
 ## Plan
-1. # Research & Design
+### 1.  Research & Design
 Understand the Game Mechanics: Examine Lux AI's rules and objectives, including how agents interact with environment hazards, relics, and energy tiles.
-Data Exploration:
+**Data Exploration:**
 Review environment data stored in LuxAIGym to understand its structure (e.g., map dimensions, unit attributes).
 Inspect JSON-based replay data for details on agent movements, rewards, and actions across different episodes.
 Algorithm Selection: Decide on the core reinforcement learning (RL) methods (e.g., PPO, SAC, offline RL, or imitation learning approaches) based on the complexity of the state/action space and available replay data.
 Design the Agent Architecture:
 Plan the neural network structure (e.g., CNN for grid-based features, MLP for flattened data).
 Outline how different components (policy network, value function, replay buffer) fit together within the training pipeline.
-2. # Development
-Environment Integration:
+### 2.  Development
+**Environment Integration:**
 Set up a robust interface with LuxAIGym to obtain live environment data (e.g., agent positions, tile information).
 Ensure the framework can reset, step through, and render episodes for debugging and testing.
-Replay Data Handling:
+
+**Replay Data Handling:**
 Implement scripts to parse JSON replays into 2D tensors, accommodating agent positions, hazards, relic locations, and energy distribution.
 Develop data loaders that can optionally provide offline replay data for model pre-training or fine-tuning.
-Algorithm & Model Implementation:
+
+**Algorithm & Model Implementation:**
 Write modular code for RL algorithms (on-policy/off-policy) or imitation learning pipelines (e.g., behavior cloning).
 Integrate advanced features if needed (e.g., reward shaping, curriculum learning, or advanced exploration strategies).
-3. #Training & Testing
-Initial Training on Environment Data:
+### 3. Training & Testing
+**Initial Training on Environment Data:***
 Run baseline RL training directly within LuxAIGym to validate the agent’s ability to learn from the live environment.
 Log intermediate performance (scores, win rates, etc.) and track convergence.
-Utilizing Episode Replay Data (Later Stages):
+
+**Utilizing Episode Replay Data (Later Stages):**
 Introduce offline training or imitation learning using the JSON replay dataset.
 Convert these replays into 2D/3D tensors that mirror the input format used in live training.
 Compare performance gains from combining live environment data with replay data.
-Iterative Refinement:
+
+**Iterative Refinement:**
 Perform hyperparameter tuning (learning rate, batch size, reward shaping) to optimize results.
 Evaluate different network architectures and data preprocessing techniques (e.g., normalization, embedding tile types).
-Robust Testing Regimen:
+
+**Robust Testing Regimen:**
 Validate the agent’s performance across diverse scenarios (varying map sizes, hazard densities, and team configurations).
 Use automated scripts to run multiple trials and statistically assess improvement over time.
-4. #Evaluation & Submission
-Performance Analysis:
+### 4. Evaluation & Submission
+**Performance Analysis:**
 Conduct final evaluations to measure reliability, average score, and win rates across official or custom test scenarios.
 Document any improvements gained by leveraging replay data versus environment-only training.
-Packaging & Deliverables:
+
+**Packaging & Deliverables:**
 Package the final model—along with all necessary code, dependencies, and configurations—into a zip file.
 Provide clear instructions for running model inside LuxAIGym (e.g., Python environment setup, usage examples).
 
