@@ -125,12 +125,66 @@ Provide clear instructions for running model inside LuxAIGym (e.g., Python envir
 
 
 
-## Personnel
-- Quang Nguyen
-- Brandon Hugger
-- Jie Huang
-- Jihyeon Jeong
+## Personnel (subject to change)
 
+
+**Environment & Simulation Lead - Quang Nguyen**
+
+**Responsibilities:**
+
+Integrate with the LuxAIGym environment (setup, configuration, and environment resets).
+Manage environment parameters and scenarios (e.g., map sizes, hazards, debug tools).
+Ensure smooth interaction between the simulation loop and RL training code.
+
+**Deliverables:**
+
+A well-documented environment integration module or class.
+Utilities for initializing, resetting, and customizing the environment for testing and debugging.
+
+---
+
+**Data & Replay Engineer - Jie Huang**
+
+**Responsibilities:**
+
+Handle JSON-based replay data: parsing, cleaning, and converting into usable formats (e.g., 2D tensors).
+Build any necessary data loaders or pipelines for imitation learning.
+Work closely with the Environment Lead to ensure consistency between live environment data and replay data.
+
+**Deliverables:**
+
+A robust data pipeline for both streaming environment data and batch replay data.
+Scripts/notebooks demonstrating how to transform replays into training samples.
+
+ ---
+
+ **Reinforcement Learning Specialist  - Brandon Hugger**
+
+**Responsibilities:**
+
+Implement and/or integrate the chosen RL algorithms (e.g., PPO, DQN, BCQ, etc.).
+Define reward functions, hyperparameters, and training schedules.
+Collaborate with Environment Lead and Data Engineer to manage training loops (online/offline).
+
+**Deliverables:**
+
+Core RL code or modules, including policy networks, value functions, and replay buffers.
+Experiments and documented results of tuning (learning rates, exploration strategies, etc.).
+
+---
+
+**Evaluation & Visualization Developer - Jihyeon Jeong**
+
+**Responsibilities:**
+
+Design and implement a dashboard or interface to monitor training progress and evaluate agent performance.
+Generate plots and statistics (e.g., average rewards, win rates, performance metrics over time).
+Assist in packaging the final solution, ensuring reproducibility and ease of use for submission.
+
+**Deliverables:**
+
+An interactive dashboard or a local GUI, that visualizes agent metrics.
+code for automated test runs and performance reporting (e.g., generating PDFs or HTML reports).
 ## Communication
 - **Slack** for real-time communication. 
 - **Jira** for task and project management. 
