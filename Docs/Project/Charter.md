@@ -126,6 +126,10 @@ Provide clear instructions for running model inside LuxAIGym (e.g., Python envir
 
 
 ## Personnel
+- Quang Nguyen
+- Brandon Hugger
+- Jie Huang
+- Jihyeon Jeong
 
 ## Communication
 - **Slack** for real-time communication. 
