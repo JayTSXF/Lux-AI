@@ -52,43 +52,59 @@ The final deliverable will be packaged as a zip file containing all required scr
 
 ## Plan
 ### 1.  Research & Design
-Understand the Game Mechanics: Examine Lux AI's rules and objectives, including how agents interact with environment hazards, relics, and energy tiles.
+**Understand the Game Mechanics:** Examine Lux AI's rules and objectives, including how agents interact with environment hazards, relics, and energy tiles.
 **Data Exploration:**
 Review environment data stored in LuxAIGym to understand its structure (e.g., map dimensions, unit attributes).
 Inspect JSON-based replay data for details on agent movements, rewards, and actions across different episodes.
 Algorithm Selection: Decide on the core reinforcement learning (RL) methods (e.g., PPO, SAC, offline RL, or imitation learning approaches) based on the complexity of the state/action space and available replay data.
-Design the Agent Architecture:
+
+**Design the Agent Architecture:**
 Plan the neural network structure (e.g., CNN for grid-based features, MLP for flattened data).
 Outline how different components (policy network, value function, replay buffer) fit together within the training pipeline.
+
 ### 2.  Development
 **Environment Integration:**
 Set up a robust interface with LuxAIGym to obtain live environment data (e.g., agent positions, tile information).
 Ensure the framework can reset, step through, and render episodes for debugging and testing.
 
-**Replay Data Handling:**
-Implement scripts to parse JSON replays into 2D tensors, accommodating agent positions, hazards, relic locations, and energy distribution.
-Develop data loaders that can optionally provide offline replay data for model pre-training or fine-tuning.
-
 **Algorithm & Model Implementation:**
 Write modular code for RL algorithms (on-policy/off-policy) or imitation learning pipelines (e.g., behavior cloning).
 Integrate advanced features if needed (e.g., reward shaping, curriculum learning, or advanced exploration strategies).
-### 3. Training & Testing
-**Initial Training on Environment Data:***
-Run baseline RL training directly within LuxAIGym to validate the agent’s ability to learn from the live environment.
-Log intermediate performance (scores, win rates, etc.) and track convergence.
 
-**Utilizing Episode Replay Data (Later Stages):**
-Introduce offline training or imitation learning using the JSON replay dataset.
-Convert these replays into 2D/3D tensors that mirror the input format used in live training.
-Compare performance gains from combining live environment data with replay data.
 
-**Iterative Refinement:**
-Perform hyperparameter tuning (learning rate, batch size, reward shaping) to optimize results.
-Evaluate different network architectures and data preprocessing techniques (e.g., normalization, embedding tile types).
+### 3. **Training Phase 1 & Testing**
 
-**Robust Testing Regimen:**
-Validate the agent’s performance across diverse scenarios (varying map sizes, hazard densities, and team configurations).
-Use automated scripts to run multiple trials and statistically assess improvement over time.
+1. **Initial Training on Environment Data**  
+   - Perform **baseline RL training** directly within the LuxAIGym environment.  
+   - Measure and log **key performance indicators** (e.g., scores, win rates) to track learning progress.  
+   - Use these initial results to **validate** the agent’s basic functionality and convergence behavior.
+
+2. **Iterative Refinement**  
+   - Conduct **hyperparameter tuning** (learning rate, batch size, reward shaping) to optimize training efficiency.  
+   - Experiment with **alternative model architectures** (e.g., CNN vs. MLP) and data preprocessing techniques (normalization, tile-type embeddings).  
+   - Maintain a **change log** of each experiment and systematically compare outcomes.
+
+3. **Robust Testing Regimen**  
+   - Evaluate the agent’s adaptability to **diverse scenarios**, such as varied map sizes, hazard densities, and team configurations.  
+   - Use **automated scripts** to run multiple trials and gather statistically meaningful performance data (e.g., average rewards, standard deviations, confidence intervals).  
+   - Document **improvements over time** to inform future training decisions.
+
+### 4. **Training Phase 2 & Testing**
+
+1. **Replay Data Handling**  
+   - Implement scripts to **parse JSON replays** into structured formats (e.g., 2D tensors) capturing agent positions, hazards, relic locations, and energy tiles.  
+   - Develop **data loaders** capable of batching and feeding this replay data into training pipelines for either **pre-training** or **fine-tuning**.
+
+2. **Utilizing Episode Replay Data**  
+   - Introduce **imitation learning** techniques (e.g., behavior cloning) to leverage human or expert-play data for faster convergence and improved decision-making.  
+   - **Convert** replay episodes into 2D/3D tensors consistent with the input formats used in live training, ensuring smooth integration.  
+   - **Compare performance** of agents trained solely on environment data against those incorporating both environment and replay data.
+
+3. **Reintegration & Retraining in LuxAIGym**  
+   - **Retrain** or fine-tune the agent directly in the LuxAIGym environment after incorporating insights or weights from the replay-based models.  
+   - Conduct another round of **performance evaluations** to verify improvements when returning to a live training context.  
+   - Finalize hyperparameters and data-processing strategies in preparation for **final evaluation** and submission.
+
 ### 4. Evaluation & Submission
 **Performance Analysis:**
 Conduct final evaluations to measure reliability, average score, and win rates across official or custom test scenarios.
@@ -97,6 +113,16 @@ Document any improvements gained by leveraging replay data versus environment-on
 **Packaging & Deliverables:**
 Package the final model—along with all necessary code, dependencies, and configurations—into a zip file.
 Provide clear instructions for running model inside LuxAIGym (e.g., Python environment setup, usage examples).
+### Timeline
+
+| **Sprint 1 - ends 2/17**                                                                                                                                                                                                                           | **Sprint 2 - ends 3/25**                                                                                                                                                                                                                                     | **Sprint 3 - ends 4/28**                                                                                                                                                                                                                           |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Research & Design** <br><br>- **Understand the Game Mechanics**: Examine Lux AI's rules/objectives and how agents interact with environment hazards, relics, and energy tiles. <br>- **Data Exploration**: Review LuxAIGym data (map dimensions, unit attributes) and inspect JSON replays (agent movements, rewards, actions). <br>- **Algorithm Selection**: Choose RL methods (PPO, SAC, offline RL, or imitation learning). <br>- **Design the Agent Architecture**: Plan the neural network structure (CNN vs. MLP) and outline policy/value/replay buffer components. |**Data Manipulation** <br><br>  - **Replay Data Handling**: Parse JSON replays into 2D tensors (positions, hazards, relics). Build loaders for pre-training/fine-tuning.<br><br><br><br><br><br><br><br><br><br><br><br><br><br>| **Evaluation & Submission** <br><br>- **Performance Analysis**: Conduct final evaluations (average scores, reliability, win rates) on official or custom scenarios. Document improvements from replay-based approaches. <br>- **Packaging & Deliverables**: Provide a zip file (code, dependencies, configs) with usage instructions for LuxAIGym, then submit for official ranking.<br><br><br><br><br><br><br> |
+| **Development** <br><br>- **Environment Integration**: Set up LuxAIGym interface (reset, step, render) for debugging/testing. <br>- **Algorithm & Model Implementation**: Write modular RL/imitation code; integrate advanced features (reward shaping, curriculum learning). | **Training Phase 2**<br><br> - **Utilizing Episode Replay Data**: Apply imitation learning (behavior cloning), convert replays to consistent inputs, compare environment-only vs. combined data. <br><br><br>                                                                                                                                                                                                                                                  |                                                                                                                                                                                                                                         |
+| **Training Phase 1 & Testing** <br><br> - **Initial Training on Environment Data**: Baseline RL training in LuxAIGym; log scores and convergence. <br> - **Iterative Refinement**: Tune hyperparameters, test architectures (CNN vs. MLP), maintain change logs. <br> - **Robust Testing Regimen**: Validate on diverse maps, run multiple trials, document improvements. |**Testing** <br><br> - **Reintegration & Retraining**: Fine-tune the agent with replay insights, re-check performance, finalize hyperparams/data pipelines.<br><br><br><br><br><br><br><br><br>                                                                                                                                                                                                                                                  |                                                                                                                                                                                                                                         |
+
+
+
 
 
 ## Personnel
