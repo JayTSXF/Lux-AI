@@ -35,7 +35,8 @@ class Agent():
 
     def act(self, step: int, obs, remainingOverageTime: int = 60):
         unit_mask = np.array(obs["units_mask"][self.team_id])          
-        unit_positions = np.array(obs["units"]["position"][self.team_id]) 
+        unit_positions = np.array(obs["units"]["position"][self.team_id])
+        opp_unit_positions = np.array(obs["units"]["position"][self.opp_team_id]) 
         unit_energys = np.array(obs["units"]["energy"][self.team_id])     
         observed_relic_node_positions = np.array(obs["relic_nodes"])       
         observed_relic_nodes_mask = np.array(obs["relic_nodes_mask"])      

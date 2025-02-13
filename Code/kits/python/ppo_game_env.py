@@ -9,7 +9,7 @@ class PPOGameEnv(gym.Env):
     def __init__(self):
         super(PPOGameEnv, self).__init__()
         
-        self.obs_shape = (SPACE_SIZE, SPACE_SIZE, 3)
+        self.obs_shape = (SPACE_SIZE, SPACE_SIZE, 4)
         self.observation_space = spaces.Box(low=-1, high=2, shape=self.obs_shape, dtype=np.int8)
         
         self.action_space = spaces.Discrete(len(ActionType))
@@ -19,12 +19,12 @@ class PPOGameEnv(gym.Env):
         
         self.tile_map = None     
         self.relic_map = None    
-        self.agent_position = None  
+        self.agent_position = None 
+        self.opp_position = None 
         
         self.agent_x = None
         self.agent_y = None
         
-        # 用于统计得分
         self.score = 0
         
         self._init_state()
@@ -48,15 +48,18 @@ class PPOGameEnv(gym.Env):
         self.relic_map = flat_relic.reshape((SPACE_SIZE, SPACE_SIZE))
         
         self.agent_position = np.zeros((SPACE_SIZE, SPACE_SIZE), dtype=np.int8)
+        self.opp_position = np.zeros((SPACE_SIZE, SPACE_SIZE), dtype=np.int8)
         self.agent_x, self.agent_y = SPACE_SIZE // 2, SPACE_SIZE // 2
+        self.opp_x, self.opp_y = SPACE_SIZE // 2, SPACE_SIZE // 2
+
         self.agent_position[self.agent_y, self.agent_x] = 1
         
         self.current_step = 0
         self.score = 0
 
     def compute_team_vision(self):
-        sensor_range = Global.UNIT_SENSOR_RANGE
-        nebula_reduction = 2  
+        sensor_range = np.random(Global.UNIT_SENSOR_RANGE)
+        nebula_reduction = np.random(Global.NEBULA_VISION_REDUCTION) 
         vision = np.zeros((SPACE_SIZE, SPACE_SIZE), dtype=np.float32)
         
         unit_positions = np.argwhere(self.agent_position == 1)  
@@ -76,6 +79,7 @@ class PPOGameEnv(gym.Env):
         obs_tile = np.where(visible_mask, self.tile_map, -1)
         obs_relic = np.where(visible_mask, self.relic_map, 0)
         obs_agent = np.where(visible_mask, self.agent_position, 0)
+
         
         obs = np.stack([obs_tile, obs_relic, obs_agent], axis=-1)
         return obs
@@ -102,14 +106,14 @@ class PPOGameEnv(gym.Env):
         if action_enum != ActionType.sap:
             new_x, new_y = warp_point(self.agent_x + dx, self.agent_y + dy)
             if self.tile_map[new_y, new_x] == 2:
-                reward -= 1.0 
+                reward -= 0.5 
             else:
                 self.agent_position[:, :] = 0
                 self.agent_x, self.agent_y = new_x, new_y
                 self.agent_position[self.agent_y, self.agent_x] = 1
         
         if self.relic_map[self.agent_y, self.agent_x] == 1:
-            reward += 1.0
+            reward += 0.7
             self.score += 1
             self.relic_map[self.agent_y, self.agent_x] = 0
             opp_x, opp_y = get_opposite(self.agent_x, self.agent_y)
