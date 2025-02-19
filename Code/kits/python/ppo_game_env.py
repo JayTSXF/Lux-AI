@@ -9,7 +9,7 @@ class PPOGameEnv(gym.Env):
     def __init__(self):
         super(PPOGameEnv, self).__init__()
         
-        self.obs_shape = (SPACE_SIZE, SPACE_SIZE, 4)
+        self.obs_shape = (SPACE_SIZE, SPACE_SIZE, 3)
         self.observation_space = spaces.Box(low=-1, high=2, shape=self.obs_shape, dtype=np.int8)
         
         self.action_space = spaces.Discrete(len(ActionType))
@@ -21,6 +21,8 @@ class PPOGameEnv(gym.Env):
         self.relic_map = None    
         self.agent_position = None 
         self.opp_position = None 
+
+        self.visited = np.zeros((SPACE_SIZE, SPACE_SIZE), dtype=bool)
         
         self.agent_x = None
         self.agent_y = None
@@ -58,8 +60,8 @@ class PPOGameEnv(gym.Env):
         self.score = 0
 
     def compute_team_vision(self):
-        sensor_range = np.random(Global.UNIT_SENSOR_RANGE)
-        nebula_reduction = np.random(Global.NEBULA_VISION_REDUCTION) 
+        sensor_range = Global.UNIT_SENSOR_RANGE
+        nebula_reduction = Global.NEBULA_VISION_REDUCTION 
         vision = np.zeros((SPACE_SIZE, SPACE_SIZE), dtype=np.float32)
         
         unit_positions = np.argwhere(self.agent_position == 1)  
@@ -105,12 +107,20 @@ class PPOGameEnv(gym.Env):
         
         if action_enum != ActionType.sap:
             new_x, new_y = warp_point(self.agent_x + dx, self.agent_y + dy)
+
+            if not self.visited[new_y, new_x]:  
+                reward += 0.2  # Reward for discovering new tile
+                self.visited[new_y, new_x] = True 
+
             if self.tile_map[new_y, new_x] == 2:
                 reward -= 0.5 
             else:
                 self.agent_position[:, :] = 0
                 self.agent_x, self.agent_y = new_x, new_y
                 self.agent_position[self.agent_y, self.agent_x] = 1
+        
+        if self.current_step > 10 and action_enum == ActionType.center:
+            reward -= 0.3 
         
         if self.relic_map[self.agent_y, self.agent_x] == 1:
             reward += 0.7

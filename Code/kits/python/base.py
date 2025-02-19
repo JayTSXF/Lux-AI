@@ -15,15 +15,15 @@ class Global:
     LAST_MATCH_WHEN_RELIC_CAN_APPEAR = 2
 
     # We will find the exact value of these constants during the game
-    UNIT_MOVE_COST = list(range(1,6))#1  # OPTIONS: list(range(1, 6))
-    UNIT_SAP_COST = list(range(30,51))#30  # OPTIONS: list(range(30, 51))
-    UNIT_SAP_RANGE = list(range(3,8))#3  # OPTIONS: list(range(3, 8))
-    UNIT_SENSOR_RANGE = [1,2,3,4]#2  # OPTIONS: [1, 2, 3, 4]
-    OBSTACLE_MOVEMENT_PERIOD = [6.67,10,20,40] #20  # OPTIONS: 6.67, 10, 20, 40
-    OBSTACLE_MOVEMENT_DIRECTION = [(1, -1), (-1, 1)] #(0, 0)  # OPTIONS: [(1, -1), (-1, 1)]
-    NEBULA_VISION_REDUCTION = list(range(0,8)) #2  # OPTIONS: [1, 2, 3, 4, 5]
+    UNIT_MOVE_COST = 1#1  # OPTIONS: list(range(1, 6))
+    UNIT_SAP_COST = 30  # OPTIONS: list(range(30, 51))
+    UNIT_SAP_RANGE = 3  # OPTIONS: list(range(3, 8))
+    UNIT_SENSOR_RANGE = 2  # OPTIONS: [1, 2, 3, 4]
+    OBSTACLE_MOVEMENT_PERIOD = 20  # OPTIONS: 6.67, 10, 20, 40
+    OBSTACLE_MOVEMENT_DIRECTION = (0, 0)  # OPTIONS: [(1, -1), (-1, 1)]
+    NEBULA_VISION_REDUCTION = 2  # OPTIONS: [1, 2, 3, 4, 5]
     # We will NOT find the exact value of these constants during the game
-    NEBULA_ENERGY_REDUCTION = [0, 1, 2, 3, 5, 25] #5  # OPTIONS: [0, 1, 2, 3, 5, 25]
+    NEBULA_ENERGY_REDUCTION = 5  # OPTIONS: [0, 1, 2, 3, 5, 25]
 
     # Exploration flags:
 
