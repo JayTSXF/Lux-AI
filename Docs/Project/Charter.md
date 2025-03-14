@@ -1,21 +1,28 @@
 # Project Charter
 
 ## Description
-The **Lux AI Season 3** competition challenges developers to create an AI agent to tackle a 1v1 multi-agent game in a partially observable environment. The game requires AI agents to adapt to constant environmental change to strategically balance resource management, decision-making under uncertainty, and long-term planning to get an edge over competing agents.
+The Lux AI Season 3 competition challenges participants to develop AI agents capable of operating in a 1v1, partially observable environment. Agents must continuously adapt to shifting conditions—managing resources, making decisions under uncertainty, and planning for the long term—to surpass competing agents. By leveraging reinforcement learning (RL) approaches, these agents learn optimal strategies from past experiences and can generalize across different scenarios. The techniques explored in this competition have broad implications for real-world applications, such as real-time market adaptation in finance or dynamic decision-making in medical diagnostics.
 
-The core problems involve **reinforcement learning (RL)**, **imitation learning**, and **meta-learning**, which help create a model that can be generalized across different scenarios and opponents. This project is significant for various fields, such as **adapting to market changes in real-time in financial modeling**, **adapting to new medical conditions to assist in medical diagnosis**, and more.
+The core problems utilizing reinforcement learning to help create a model that can be generalized across different scenarios and opponents. These techniques allow AI agents to improve performance over time by learning optimal strategies from past experiences, leveraging expert demonstrations or behavioral patterns, and dynamically adjusting to new challenges. 
+
+One of the major challenges in the competition is the balance between short-term survival and long-term optimization. AI agents must decide how to allocate limited resources efficiently, when to take risks, and how to maximize their chances of success over an extended period. This requires sophisticated planning and the ability to predict the strategies of opponents based on limited information.
+
+Additionally, the competition fosters innovation in AI research by encouraging participants to explore new techniques in deep reinforcement learning and multi-agent cooperation. Developers often experiment with different architectures, such as convolutional neural networks (CNNs) for spatial awareness, recurrent neural networks (RNNs) for memory-based decision-making, and transformer models for efficient strategy formulation.
+
 
 ## Scope
 **This project will focus on:**
-  - Developing an **AI agent** capable of competing in Lux AI
-  - Implement **reinforcement learning strategies** to optimize agent performance
-  - Train agent to **adapt to numerous known and unknown scenerios**
-  - Submit the agent on **official leaderboard** for benchmarking
+ - **Developing** an AI agent capable of competing in Lux AI Season 3.
+- **Implementing** reinforcement learning strategies to optimize the agent’s performance.
+- **Training** the agent to handle a wide range of known and unknown scenarios.
+- **Submitting** the agent to the official leaderboard for benchmarking and performance tracking.
+
     
 **What the project will deliver:**
-  - A fully functional **AI agent** capable of competing in the Lux AI Season 3 competition.
-  - Interactive **dashboard** for **performance analysis report**
-  - **Final submission** for ranking
+- A fully functional AI agent ready for Lux AI Season 3 competition.
+- An interactive dashboard for performance analysis.
+- A final submission package for official ranking.
+
 
 ## Metrics
 
@@ -23,8 +30,8 @@ The core problems involve **reinforcement learning (RL)**, **imitation learning*
 
 | **Metric**                 | **Description**                                      | **Goal** |
 |----------------------------|------------------------------------------------------|----------|
-| **Win Rate**               | Percentage of games won against random and top-ranked agents. | ≥ 60% against random agents from the submission pool. |
-| **Leaderboard Ranking**    | Position on the official leaderboard. | Top 15% of submissions (stretch goal: top 10%). |
+| **Win Rate**               | Percentage of games won against both random and top-ranked agents. | ≥ 60% against random agents from the submission pool. |
+| **Leaderboard Ranking**    | Position on the official leaderboard. | Top 15% of submissions (stretch goal: top 45%). |
 | **Skill Rating (μ, σ)** | Measures the agent’s estimated skill level (μ) and uncertainty (σ). | Increase μ while reducing σ over time for ranking stability. |
 | **Validation Pass Rate**   | Percentage of submitted bots that pass the self-match validation. | ≥ 95% successful validation rate. |
 | **Match Frequency (New Submissions)** | Number of matches played per new bot submission. | Ensure new bots receive enough episodes for quick ranking updates. |
@@ -44,11 +51,12 @@ The core problems involve **reinforcement learning (RL)**, **imitation learning*
 
 
 ## Architecture
-There are two primary data sources for this project: environment data and episode replay data. Both contain information on agent positions, environmental hazards, relics, and energy tiles. The environment data resides within the LuxAIGym framework, while episode replay data is stored in JSON files.
+There are two primary data sources for this project: environment data and episode replay data which is contained within a JSON format. Both contain information on agent positions, environmental hazards, relics, and energy tiles. 
 
 Initially, the model will be trained on environment data directly from LuxAIGym. In later stages, the project will leverage the JSON-based episode replay data by parsing it into 2D tensors, which then inform model training and fine-tuning. This offline replay data allows for additional experimentation and analysis beyond the live environment.
 
 The final deliverable will be packaged as a zip file containing all required scripts, dependencies, and configuration files needed to run the model. Users can integrate this package seamlessly into their existing Python environment—whether on a local machine or a cloud-based server—ensuring easy testing.
+
 
 ## Plan
 ### 1.  Research & Design
@@ -186,10 +194,11 @@ Assist in packaging the final solution, ensuring reproducibility and ease of use
 An interactive dashboard or a local GUI, that visualizes agent metrics.
 code for automated test runs and performance reporting (e.g., generating PDFs or HTML reports).
 ## Communication
-- **Slack** for real-time communication. 
-- **Jira** for task and project management. 
-- **GitHub** for version control and code collaboration. 
-- **Regular meetings** to review progress and address challenges.
+- **Discord** for day-to-day communication and quick updates.
+- **Jira** for task planning, sprint tracking, and backlog management.
+- **GitHub** for code hosting, with mandatory pull-request reviews.
+- **Weekly Stand-Ups** (Held during lab hours) for status updates and immediate issue resolution.
+- **Bi-Weekly Reviews** to assess progress against sprint goals and adjust as needed.
 
 
 
