@@ -15,13 +15,13 @@ class Global:
     LAST_MATCH_WHEN_RELIC_CAN_APPEAR = 2
 
     # We will find the exact value of these constants during the game
-    UNIT_MOVE_COST = 1#1  # OPTIONS: list(range(1, 6))
+    UNIT_MOVE_COST = 1  # OPTIONS: list(range(1, 6))
     UNIT_SAP_COST = 30  # OPTIONS: list(range(30, 51))
     UNIT_SAP_RANGE = 3  # OPTIONS: list(range(3, 8))
     UNIT_SENSOR_RANGE = 2  # OPTIONS: [1, 2, 3, 4]
     OBSTACLE_MOVEMENT_PERIOD = 20  # OPTIONS: 6.67, 10, 20, 40
     OBSTACLE_MOVEMENT_DIRECTION = (0, 0)  # OPTIONS: [(1, -1), (-1, 1)]
-    NEBULA_VISION_REDUCTION = 2  # OPTIONS: [1, 2, 3, 4, 5]
+
     # We will NOT find the exact value of these constants during the game
     NEBULA_ENERGY_REDUCTION = 5  # OPTIONS: [0, 1, 2, 3, 5, 25]
 
@@ -122,16 +122,16 @@ def get_match_number(step: int) -> int:
     return step // (Global.MAX_STEPS_IN_MATCH + 1)
 
 
-def warp_int(x):
-    if x >= SPACE_SIZE:
-        x -= SPACE_SIZE
-    elif x < 0:
-        x += SPACE_SIZE
-    return x
+# def warp_int(x):
+#     if x >= SPACE_SIZE:
+#         x -= SPACE_SIZE
+#     elif x < 0:
+#         x += SPACE_SIZE
+#     return x
 
 
-def warp_point(x, y) -> tuple:
-    return warp_int(x), warp_int(y)
+# def warp_point(x, y) -> tuple:
+#     return warp_int(x), warp_int(y)
 
 
 def get_opposite(x, y) -> tuple:
