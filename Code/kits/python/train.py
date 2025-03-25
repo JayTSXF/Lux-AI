@@ -1,41 +1,34 @@
 from stable_baselines3 import PPO
-# from sb3_contrib import RecurrentPPO
-# from ppo_game_env import PPOGameEnv
-# import os
-# env = PPOGameEnv()
-# dir = os.getcwd()
-# model = RecurrentPPO("MlpLstmPolicy", env, verbose=1,policy_kwargs=dict(lstm_hidden_size=256),
-#                       learning_rate=3e-4,
-#                       n_steps=512, batch_size=128,
-#                       gamma=0.99, gae_lambda=0.95,
-#                       ent_coef=0.01, clip_range=0.2, tensorboard_log = dir)
-#
-# model.learn(total_timesteps=10000)
-#
-# model.save("model/ppo_game_env_model")
-
-
-from stable_baselines3 import PPO
+from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor
 from ppo_game_env import PPOGameEnv
 
-# 创建环境实例
-env = PPOGameEnv()
+# Create an instance of the environment
 
-# 使用多层感知机策略初始化 PPO 模型
-# model = PPO("MultiInputPolicy", env,learning_rate=0.0005,ent_coef=0.1,vf_coef = 0.3, verbose=1)
-model = PPO("MultiInputPolicy", env,learning_rate=0.0005, verbose=1)
-# model_1 = PPO("MultiInputPolicy", env,learning_rate=0.0005, verbose=1)
+def make_env():
+    return PPOGameEnv()
 
 
+if __name__ == '__main__':
+# Initialize the PPO model with a multilayer perceptron policy
+# model = PPO("MultiInputPolicy", env, learning_rate=0.0005, ent_coef=0.1, vf_coef=0.3, verbose=1)
 
-# total_timesteps may need to adjust
-# model.learn(total_timesteps=960000)
-model.learn(total_timesteps=6000)
+    env = SubprocVecEnv([lambda: make_env() for _ in range (8)])
+    env = VecMonitor(env)
+    model = PPO("MultiInputPolicy", env, 
+                n_steps=2048,
+                batch_size = 128,
+                learning_rate=5e-4, 
+                verbose=1)
+    # model_1 = PPO("MultiInputPolicy", env, learning_rate=0.0005, verbose=1)
 
-# 保存训练好的模型
-model.save("model/ppo_game_env_model")
+    # total_timesteps may need to be adjusted
+    # model.learn(total_timesteps=960000)
+    model.learn(total_timesteps=640000)
 
-# 测试：加载模型并进行一次模拟
+    # Save the trained model
+    model.save("/model/ppo_game_env_model")
+
+# Test: Load the model and run a simulation
 # obs = env.reset()
 # done = False
 # while not done:
