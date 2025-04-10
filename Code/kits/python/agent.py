@@ -1,6 +1,151 @@
-from lux.utils import direction_to
+import os
 import sys
 import numpy as np
+from stable_baselines3 import PPO
+
+def transform_obs(comp_obs, env_cfg=None):
+    """
+    Transform the JSON observation returned by the competition engine into a flattened observation format
+    for model training.
+    
+    The observation format from the competition environment (comp_obs) is structured as follows:
+      {
+        "obs": {
+            "units": {"position": Array(T, N, 2), "energy": Array(T, N, 1)},
+            "units_mask": Array(T, N),
+            "sensor_mask": Array(W, H),
+            "map_features": {"energy": Array(W, H), "tile_type": Array(W, H)},
+            "relic_nodes_mask": Array(R),
+            "relic_nodes": Array(R, 2),
+            "team_points": Array(T),
+            "team_wins": Array(T),
+            "steps": int,
+            "match_steps": int
+        },
+        "remainingOverageTime": int,
+        "player": str,
+        "info": {"env_cfg": dict}
+      }
+    
+    We need to construct the following flattened dictionary (which matches the format returned by PPOGameEnv.get_obs()):
+      {
+        "units_position": (T, N, 2),
+        "units_energy": (T, N, 1),
+        "units_mask": (T, N),
+        "sensor_mask": (W, H),
+        "map_features_tile_type": (W, H),
+        "map_features_energy": (W, H),
+        "relic_nodes_mask": (R,),
+        "relic_nodes": (R, 2),
+        "team_points": (T,),
+        "team_wins": (T,),
+        "steps": (1,),
+        "match_steps": (1,),
+        "remainingOverageTime": (1,),
+        "env_cfg_map_width": (1,),
+        "env_cfg_map_height": (1,),
+        "env_cfg_max_steps_in_match": (1,),
+        "env_cfg_unit_move_cost": (1,),
+        "env_cfg_unit_sap_cost": (1,),
+        "env_cfg_unit_sap_range": (1,)
+      }
+    """
+    # If the "obs" key exists, use its content; otherwise, use comp_obs directly
+    if "obs" in comp_obs:
+        base_obs = comp_obs["obs"]
+    else:
+        base_obs = comp_obs
+
+    flat_obs = {}
+
+    # Process the "units" data
+    if "units" in base_obs:
+        flat_obs["units_position"] = np.array(base_obs["units"]["position"], dtype=np.int32)
+        flat_obs["units_energy"] = np.array(base_obs["units"]["energy"], dtype=np.int32)
+        # If units_energy has shape (NUM_TEAMS, MAX_UNITS), expand one dimension
+        if flat_obs["units_energy"].ndim == 2:
+            flat_obs["units_energy"] = np.expand_dims(flat_obs["units_energy"], axis=-1)
+    else:
+        flat_obs["units_position"] = np.array(base_obs["units_position"], dtype=np.int32)
+        flat_obs["units_energy"] = np.array(base_obs["units_energy"], dtype=np.int32)
+        if flat_obs["units_energy"].ndim == 2:
+            flat_obs["units_energy"] = np.expand_dims(flat_obs["units_energy"], axis=-1)
+    
+    # Process units_mask
+    if "units_mask" in base_obs:
+        flat_obs["units_mask"] = np.array(base_obs["units_mask"], dtype=np.int8)
+    else:
+        flat_obs["units_mask"] = np.zeros(flat_obs["units_position"].shape[:2], dtype=np.int8)
+    
+    # Process sensor_mask: if the returned sensor_mask is a 3D array, take the logical OR to obtain a global mask
+    sensor_mask_arr = np.array(base_obs["sensor_mask"], dtype=np.int8)
+    if sensor_mask_arr.ndim == 3:
+        sensor_mask = np.any(sensor_mask_arr, axis=0).astype(np.int8)
+    else:
+        sensor_mask = sensor_mask_arr
+    flat_obs["sensor_mask"] = sensor_mask
+
+    # Process map_features (tile_type and energy)
+    if "map_features" in base_obs:
+        mf = base_obs["map_features"]
+        flat_obs["map_features_tile_type"] = np.array(mf["tile_type"], dtype=np.int8)
+        flat_obs["map_features_energy"] = np.array(mf["energy"], dtype=np.int8)
+    else:
+        flat_obs["map_features_tile_type"] = np.array(base_obs["map_features_tile_type"], dtype=np.int8)
+        flat_obs["map_features_energy"] = np.array(base_obs["map_features_energy"], dtype=np.int8)
+
+    # Process relic node information
+    if "relic_nodes_mask" in base_obs:
+        flat_obs["relic_nodes_mask"] = np.array(base_obs["relic_nodes_mask"], dtype=np.int8)
+    else:
+        max_relic = env_cfg.get("max_relic_nodes", 6) if env_cfg is not None else 6
+        flat_obs["relic_nodes_mask"] = np.zeros((max_relic,), dtype=np.int8)
+    if "relic_nodes" in base_obs:
+        flat_obs["relic_nodes"] = np.array(base_obs["relic_nodes"], dtype=np.int32)
+    else:
+        max_relic = env_cfg.get("max_relic_nodes", 6) if env_cfg is not None else 6
+        flat_obs["relic_nodes"] = np.full((max_relic, 2), -1, dtype=np.int32)
+
+    # Process team points and wins
+    if "team_points" in base_obs:
+        flat_obs["team_points"] = np.array(base_obs["team_points"], dtype=np.int32)
+    else:
+        flat_obs["team_points"] = np.zeros(2, dtype=np.int32)
+    if "team_wins" in base_obs:
+        flat_obs["team_wins"] = np.array(base_obs["team_wins"], dtype=np.int32)
+    else:
+        flat_obs["team_wins"] = np.zeros(2, dtype=np.int32)
+
+    # Process step information
+    if "steps" in base_obs:
+        flat_obs["steps"] = np.array([base_obs["steps"]], dtype=np.int32)
+    else:
+        flat_obs["steps"] = np.array([0], dtype=np.int32)
+    if "match_steps" in base_obs:
+        flat_obs["match_steps"] = np.array([base_obs["match_steps"]], dtype=np.int32)
+    else:
+        flat_obs["match_steps"] = np.array([0], dtype=np.int32)
+
+    # Note: Do not process remainingOverageTime here; it will be added in Agent.act using the provided parameter
+
+    # Complete the environment configuration information
+    if env_cfg is not None:
+        flat_obs["env_cfg_map_width"] = np.array([env_cfg["map_width"]], dtype=np.int32)
+        flat_obs["env_cfg_map_height"] = np.array([env_cfg["map_height"]], dtype=np.int32)
+        flat_obs["env_cfg_max_steps_in_match"] = np.array([env_cfg["max_steps_in_match"]], dtype=np.int32)
+        flat_obs["env_cfg_unit_move_cost"] = np.array([env_cfg["unit_move_cost"]], dtype=np.int32)
+        flat_obs["env_cfg_unit_sap_cost"] = np.array([env_cfg["unit_sap_cost"]], dtype=np.int32)
+        flat_obs["env_cfg_unit_sap_range"] = np.array([env_cfg["unit_sap_range"]], dtype=np.int32)
+    else:
+        flat_obs["env_cfg_map_width"] = np.array([0], dtype=np.int32)
+        flat_obs["env_cfg_map_height"] = np.array([0], dtype=np.int32)
+        flat_obs["env_cfg_max_steps_in_match"] = np.array([0], dtype=np.int32)
+        flat_obs["env_cfg_unit_move_cost"] = np.array([0], dtype=np.int32)
+        flat_obs["env_cfg_unit_sap_cost"] = np.array([0], dtype=np.int32)
+        flat_obs["env_cfg_unit_sap_range"] = np.array([0], dtype=np.int32)
+
+    return flat_obs
+
 class Agent():
     def __init__(self, player: str, env_cfg) -> None:
         self.player = player
@@ -9,61 +154,57 @@ class Agent():
         self.opp_team_id = 1 if self.team_id == 0 else 0
         np.random.seed(0)
         self.env_cfg = env_cfg
-        
-        self.relic_node_positions = []
-        self.discovered_relic_nodes_ids = set()
-        self.unit_explore_locations = dict()
+
+        # If "max_units" is not in env_cfg, add a default value of 16
+        if "max_units" not in self.env_cfg:
+            self.env_cfg["max_units"] = 16
+
+        # Load the trained PPO model (please ensure the model file path is correct)
+        model_path = os.path.join(os.path.dirname(__file__), "/model/ppo_game_env_model.zip")
+        self.model = PPO.load(model_path)
 
     def act(self, step: int, obs, remainingOverageTime: int = 60):
-        """implement this function to decide what actions to send to each available unit. 
-        
-        step is the current timestep number of the game starting from 0 going up to max_steps_in_match * match_count_per_episode - 1.
         """
-        unit_mask = np.array(obs["units_mask"][self.team_id]) # shape (max_units, )
-        unit_positions = np.array(obs["units"]["position"][self.team_id]) # shape (max_units, 2)
-        unit_energys = np.array(obs["units"]["energy"][self.team_id]) # shape (max_units, 1)
-        observed_relic_node_positions = np.array(obs["relic_nodes"]) # shape (max_relic_nodes, 2)
-        observed_relic_nodes_mask = np.array(obs["relic_nodes_mask"]) # shape (max_relic_nodes, )
-        team_points = np.array(obs["team_points"]) # points of each team, team_points[self.team_id] is the points of the your team
+        Determine the actions for each unit based on the competition observation and the current step.
+        The output is a numpy array of shape (max_units, 3), where each row is formatted as [action type, delta_x, delta_y].
+        For non-sap actions, delta_x and delta_y are fixed at 0.
+        """
+        import sys
+        # # If step equals 11, print debug information:
+        # if step == 11:
+        #     print("DEBUG: Agent.act() called parameters:", file=sys.stderr)
+        #     print("DEBUG: self.player =", self.player, file=sys.stderr)
+        #     print("DEBUG: step =", step, file=sys.stderr)
+        #     # Print the list of keys in obs to see the general structure of the observation data
+        #     print("DEBUG: obs keys =", list(obs.keys()), file=sys.stderr)
+        #     print("=============================================================", file=sys.stderr)
+        #     print("DEBUG: ob =", obs, file=sys.stderr)
+        #     print("DEBUG: remainingOverageTime =", remainingOverageTime, file=sys.stderr)
+        #     print("#############################################################", file=sys.stderr)
         
-        # ids of units you can control at this timestep
-        available_unit_ids = np.where(unit_mask)[0]
-        # visible relic nodes
-        visible_relic_node_ids = set(np.where(observed_relic_nodes_mask)[0])
-        
-        actions = np.zeros((self.env_cfg["max_units"], 3), dtype=int)
-
-
-        # basic strategy here is simply to have some units randomly explore and some units collecting as much energy as possible
-        # and once a relic node is found, we send all units to move randomly around the first relic node to gain points
-        # and information about where relic nodes are found are saved for the next match
-        
-        # save any new relic nodes that we discover for the rest of the game.
-        for id in visible_relic_node_ids:
-            if id not in self.discovered_relic_nodes_ids:
-                self.discovered_relic_nodes_ids.add(id)
-                self.relic_node_positions.append(observed_relic_node_positions[id])
+        flat_obs = transform_obs(obs, self.env_cfg)
+        # If the current agent is player_1, swap unit information (to ensure consistency with training, allied perspective is always in the first position)
+        if self.player == "player_1":
+            flat_obs["units_position"] = flat_obs["units_position"][::-1]
+            flat_obs["units_energy"] = flat_obs["units_energy"][::-1]
+            flat_obs["units_mask"] = flat_obs["units_mask"][::-1]
             
+        # Manually add remainingOverageTime (taken from the passed parameter)
+        flat_obs["remainingOverageTime"] = np.array([remainingOverageTime], dtype=np.int32)
 
-        # unit ids range from 0 to max_units - 1
-        for unit_id in available_unit_ids:
-            unit_pos = unit_positions[unit_id]
-            unit_energy = unit_energys[unit_id]
-            if len(self.relic_node_positions) > 0:
-                nearest_relic_node_position = self.relic_node_positions[0]
-                manhattan_distance = abs(unit_pos[0] - nearest_relic_node_position[0]) + abs(unit_pos[1] - nearest_relic_node_position[1])
-                
-                # if close to the relic node we want to hover around it and hope to gain points
-                if manhattan_distance <= 4:
-                    random_direction = np.random.randint(0, 5)
-                    actions[unit_id] = [random_direction, 0, 0]
-                else:
-                    # otherwise we want to move towards the relic node
-                    actions[unit_id] = [direction_to(unit_pos, nearest_relic_node_position), 0, 0]
-            else:
-                # randomly explore by picking a random location on the map and moving there for about 20 steps
-                if step % 20 == 0 or unit_id not in self.unit_explore_locations:
-                    rand_loc = (np.random.randint(0, self.env_cfg["map_width"]), np.random.randint(0, self.env_cfg["map_height"]))
-                    self.unit_explore_locations[unit_id] = rand_loc
-                actions[unit_id] = [direction_to(unit_pos, self.unit_explore_locations[unit_id]), 0, 0]
+        # if step equals 11:
+        #     print("------------------------------------------------------------", file=sys.stderr)
+        #     print("DEBUG: flat_obs =", flat_obs, file=sys.stderr)
+        #     print("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^", file=sys.stderr)
+        # Use the model to predict actions (deterministic mode)
+        action, _ = self.model.predict(flat_obs, deterministic=True)
+        # Ensure action is a numpy array and explicitly set its type to np.int32
+        action = np.array(action, dtype=np.int32)
+
+        max_units = self.env_cfg["max_units"]
+        actions = np.zeros((max_units, 3), dtype=np.int32)
+        for i, a in enumerate(action):
+            actions[i, 0] = int(a)
+            actions[i, 1] = 0  # For sap actions, target offset can be extended here
+            actions[i, 2] = 0
         return actions
