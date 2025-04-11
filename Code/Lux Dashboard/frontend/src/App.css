@@ -1,0 +1,106 @@
+/* Global Styles */
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: #959AB2;
+}
+
+/* Title/Header */
+.title {
+  position: sticky;       /* or 'fixed' if you want it to stay on scroll */
+  top: 0;
+  left: 0;
+  width: 100%;
+  margin: 0;
+  background-color: #333;
+  color: #070707;
+  text-align: center;
+  padding: 30px;
+  font-size: 24px;
+}
+
+/* Main Container */
+.main-container {
+  display: flex;
+  justify-content: space-between;
+}
+.simulation-space {
+  flex: 1; /* Allow it to take up space between the panels */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 10px;
+  border-left: 10px solid #995b5b; /* Add a vertical separator */
+  border-right: 10px solid #995b5b; /* Add a vertical separator */
+  background-color: #6972c2; /* Optional: Add a background color */
+  color: #d47575; /* Optional: Text color for any content inside */
+  text-align: center;
+}
+
+.left-panel {
+  flex: 0 0 10%;      /* each panel gets 45% of the container width */
+  float: left;
+  background-color: #787C90;
+  border: 1px solid #2d2a2a;
+  border-radius: 5px;
+  padding: 20px;
+  flex-direction: column;
+} 
+.right-panel {
+  flex: 0 0 15%;      /* each panel gets 45% of the container width */
+  float : right;
+  background-color: #787C90;
+  border: 1px solid #1e1d1df7;
+  border-radius: 5px;
+  padding: 0px;
+  flex-direction: column;
+  text-align: center;
+
+}
+
+.right-panel h2 {
+  margin-top: 0;
+}
+
+.right-panel label {
+  display: block;
+  margin: 10px 0 5px;
+}
+
+/* Footer */
+footer {
+  text-align: center;
+  padding: 20px;
+  background-color: #333;
+  margin-top: 0px;
+}
+
+/* Start Button */
+.start-btn {
+  background-color: #27ae60;
+  color: #269c51;
+  border: none;
+  padding: 15px 30px;
+  font-size: 18px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.start-btn:hover {
+  background-color: #219150;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  .main-container {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .left-panel,
+  .right-panel {
+    width: 90%;
+    margin-bottom: 20px;
+  }
+}
