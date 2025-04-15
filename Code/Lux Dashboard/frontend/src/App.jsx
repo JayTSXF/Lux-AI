@@ -22,14 +22,26 @@ function App() {
             <h2>Environment Parameters</h2>
 
             <label htmlFor="asteroid-speed">Asteroid Speed</label>
-            <input type="range" id="asteroid-speed" min="0" max="100" />
-
+            <input type="range" id="asteroid-speed" min="0" max="100" list = "markers"/>
+            <datalist id = "A-markers"> 
+              <option value = "0"></option>
+              <option value = "25"></option>
+              <option value = "50"></option>
+              <option value = "75"></option>
+              <option value = "100"></option>
+            </datalist>
             <label htmlFor="asteroid-density">Asteroid Density</label>
-            <input type="range" id="asteroid-density" min="0" max="100" />
-
+            <input type="range" id="asteroid-density" min="0" max="100" list = "markers"/>
+            <datalist id = "B-markers"> 
+              <option value = "0"></option>
+              <option value = "25"></option>
+              <option value = "50"></option>
+              <option value = "75"></option>
+              <option value = "100"></option>
+            </datalist>
             <label htmlFor="nebula-speed">Nebula Speed</label>
             <input type="range" id="nebula-speed" min="0" max="100" />
-
+            
             <label htmlFor="nebula-density">Nebula Density</label>
             <input type="range" id="nebula-density" min="0" max="100" />
 
