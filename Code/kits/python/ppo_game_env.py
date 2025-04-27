@@ -1,641 +1,535 @@
-import sys
-import gym
-from gym import spaces
+import gymnasium as gym
 import numpy as np
+import torch
+from gymnasium import spaces
 
-# Import global constants and helper functions from base
-from base import Global, ActionType, SPACE_SIZE, get_opposite
-
-# Define constants: number of teams, maximum number of units, maximum number of relic nodes
-NUM_TEAMS = 2
-MAX_UNITS = Global.MAX_UNITS
-MAX_RELIC_NODES = Global.MAX_RELIC_NODES
-
-class PPOGameEnv(gym.Env):
+class LuxAI_S3_Env(gym.Env):
     """
-    PPOGameEnv simulates an environment that closely mimics the real competition setting and meets the following requirements:
-    
-    1. Observation Data Computation Modifications:
-       - Each allied unit has its own independent sensor mask (calculated by compute_unit_vision(unit)),
-         and get_unit_obs(unit) constructs a local observation in a fixed JSON-like format.
-       - The global observation returned to the agent is the union (logical "OR") of the sensor masks 
-         from all allied units, preserving the fixed observation format required in the competition.
-    
-    2. Reward Function Optimization:
-       The environment state is updated based on the actions and returns (observation, reward, done, info).
-       The modified reward logic is as follows:
-          1. Each unit computes its own unit_reward individually.
-          2. If a movement action causes the unit to move off the map or the target tile is an Asteroid, 
-             the action is deemed invalid and unit_reward is decreased by 0.2.
-          3. Sap Action:
-             - Check if a relic is visible in the unit’s local observation (in relic_nodes_mask);
-             - If visible, count the number of enemy units in the unit’s 8-neighborhood. 
-               If the count is >= 2, then the sap reward equals +1.0 multiplied by the number of enemy units; otherwise, subtract 2.0.
-             - If no relic is visible, subtract 2.0.
-          4. Non-sap Actions:
-             - After a successful move, check if the unit is located at a potential point within any relic configuration:
-                  * If this is the first visit to the potential point, add +2.0 to unit_reward and mark it as visited;
-                  * If the potential point has not yet yielded a team point, then increase self.score by 1, 
-                    add +3.0 to unit_reward, and mark it as team_points_space;
-                  * If the unit is already on team_points_space, then award +3.0 reward per turn.
-             - If the unit is on an energy node (energy == Global.MAX_ENERGY_PER_TILE), add +0.2 to unit_reward;
-             - If the unit is on a Nebula (tile_type == 1), subtract 0.2 from unit_reward;
-             - If after moving the unit overlaps with an enemy unit and the enemy's energy is lower, 
-               then for each such enemy unit, add +1.0 reward.
-          5. Global Exploration Reward: For each new tile discovered by the combined vision of all allied units, add +0.1 reward.
-          6. At the end of each step, the final reward is computed as: (points reward * 0.5) + (rule-based reward * 0.5).
-    
-    3. Enemy Unit Strategy:
-       - After spawning, enemy units do not act proactively; their positions are updated only every 20 steps 
-         by shifting the map to the right by 1 tile, making them passive opponents.
-       - This design is primarily for early-stage debugging, with more proactive adversarial strategies to be introduced later.
+    Custom environment for Lux AI Season 3 Challenge.
+    Implements core mechanics: factories (spawn points), units, energy collection,
+    fog of war, movement, sapping, relic point generation, and scoring&#8203;:contentReference[oaicite:20]{index=20}&#8203;:contentReference[oaicite:21]{index=21}.
+    This environment supports two-player self-play and is compatible with CleanRL's PPO.
     """
-    
-    def __init__(self):
-        super(PPOGameEnv, self).__init__()
-        
-        # Modify the action space: each unit makes independent decisions (action values range from 0 to 5)
-        self.action_space = spaces.MultiDiscrete([len(ActionType)] * MAX_UNITS)
-        
-        # The observation space remains unchanged
-        self.observation_space = spaces.Dict({
-            "units_position": spaces.Box(
-                low=0,
-                high=SPACE_SIZE - 1,
-                shape=(NUM_TEAMS, MAX_UNITS, 2),
-                dtype=np.int32
-            ),
-            "units_energy": spaces.Box(
-                low=0,
-                high=400,  # Maximum unit energy is 400
-                shape=(NUM_TEAMS, MAX_UNITS, 1),
-                dtype=np.int32
-            ),
-            "units_mask": spaces.Box(
-                low=0,
-                high=1,
-                shape=(NUM_TEAMS, MAX_UNITS),
-                dtype=np.int8
-            ),
-            "sensor_mask": spaces.Box(
-                low=0,
-                high=1,
-                shape=(SPACE_SIZE, SPACE_SIZE),
-                dtype=np.int8
-            ),
-            "map_features_tile_type": spaces.Box(
-                low=-1,
-                high=2,
-                shape=(SPACE_SIZE, SPACE_SIZE),
-                dtype=np.int8
-            ),
-            "map_features_energy": spaces.Box(
-                low=-1,
-                high=Global.MAX_ENERGY_PER_TILE,
-                shape=(SPACE_SIZE, SPACE_SIZE),
-                dtype=np.int8
-            ),
-            "relic_nodes_mask": spaces.Box(
-                low=0,
-                high=1,
-                shape=(MAX_RELIC_NODES,),
-                dtype=np.int8
-            ),
-            "relic_nodes": spaces.Box(
-                low=-1,
-                high=SPACE_SIZE - 1,
-                shape=(MAX_RELIC_NODES, 2),
-                dtype=np.int32
-            ),
-            "team_points": spaces.Box(
-                low=0,
-                high=1000,
-                shape=(NUM_TEAMS,),
-                dtype=np.int32
-            ),
-            "team_wins": spaces.Box(
-                low=0,
-                high=1000,
-                shape=(NUM_TEAMS,),
-                dtype=np.int32
-            ),
-            "steps": spaces.Box(
-                low=0, high=Global.MAX_STEPS_IN_MATCH, shape=(1,), dtype=np.int32
-            ),
-            "match_steps": spaces.Box(
-                low=0, high=Global.MAX_STEPS_IN_MATCH, shape=(1,), dtype=np.int32
-            ),
-            "remainingOverageTime": spaces.Box(
-                low=0, high=1000, shape=(1,), dtype=np.int32
-            ),
-            "env_cfg_map_width": spaces.Box(
-                low=0, high=SPACE_SIZE, shape=(1,), dtype=np.int32
-            ),
-            "env_cfg_map_height": spaces.Box(
-                low=0, high=SPACE_SIZE, shape=(1,), dtype=np.int32
-            ),
-            "env_cfg_max_steps_in_match": spaces.Box(
-                low=0, high=Global.MAX_STEPS_IN_MATCH, shape=(1,), dtype=np.int32
-            ),
-            "env_cfg_unit_move_cost": spaces.Box(
-                low=0, high=100, shape=(1,), dtype=np.int32
-            ),
-            "env_cfg_unit_sap_cost": spaces.Box(
-                low=0, high=100, shape=(1,), dtype=np.int32
-            ),
-            "env_cfg_unit_sap_range": spaces.Box(
-                low=0, high=100, shape=(1,), dtype=np.int32
-            )
+    def __init__(self, map_size=24, max_steps=100, spawn_rate=3, fog_of_war=True):
+        super().__init__()
+        # Game parameters (could be randomized within ranges as in official game)
+        self.map_size = map_size
+        self.max_steps = max_steps
+        self.spawn_rate = spawn_rate
+        self.fog_of_war = fog_of_war
+        # Unit parameters (using default values from Lux S3 specs)
+        self.max_units = 16
+        self.init_unit_energy = 100
+        self.max_unit_energy = 400
+        self.min_unit_energy = 0
+        self.unit_move_cost = 2         # cost to move (except staying)&#8203;:contentReference[oaicite:22]{index=22}
+        self.unit_sap_cost = 10        # energy cost to perform a sap&#8203;:contentReference[oaicite:23]{index=23}
+        self.unit_sap_range = 4        # sap range (Chebyshev distance)&#8203;:contentReference[oaicite:24]{index=24}
+        self.unit_sap_dropoff = 0.5    # dropoff factor for adjacent sap effect&#8203;:contentReference[oaicite:25]{index=25}
+        self.unit_sensor_range = 2     # sensor range for vision&#8203;:contentReference[oaicite:26]{index=26}
+        self.nebula_vision_reduction = 1  # vision reduction per nebula tile&#8203;:contentReference[oaicite:27]{index=27}
+        self.nebula_energy_reduction = 0  # energy reduction per step on nebula&#8203;:contentReference[oaicite:28]{index=28}
+        self.unit_energy_void_factor = 0.125  # factor for void field strength&#8203;:contentReference[oaicite:29]{index=29}
+        # Map representation
+        # We'll use numeric codes for tile types:
+        # 0 = empty, 1 = asteroid, 2 = nebula, 3 = energy node, 4 = relic node
+        self.map_tiles = None
+        self.energy_field = None   # 2D array of energy values per tile
+        self.relic_mask = None     # 2D boolean array of which tiles yield relic points when occupied
+        # Spawn locations for two teams (corners of the map)
+        self.spawn_locs = {"player_0": (0, 0), "player_1": (map_size-1, map_size-1)}
+        # Unit state: each team has an array of unit info (id index)
+        # We'll store for each unit id: [alive_flag, x, y, energy]
+        self.units = {
+            "player_0": np.zeros((self.max_units, 4), dtype=np.int32),
+            "player_1": np.zeros((self.max_units, 4), dtype=np.int32)
+        }
+        # Points for each team
+        self.points = {"player_0": 0, "player_1": 0}
+        # Step counter
+        self.step_count = 0
+        # For exploration bonus, track tiles seen by each player
+        self.discovered = {"player_0": np.zeros((map_size, map_size), dtype=bool),
+                           "player_1": np.zeros((map_size, map_size), dtype=bool)}
+        # Observation and action spaces
+        # Observation space: Dict of {player_0: {"map": ..., "units": ...}, player_1: {...}}
+        # Map: (map_size, map_size, channels), Units: (max_units, 4)
+        self.obs_channels = 6  # asteroid, nebula, energy, relic_node, friendly_unit, enemy_unit
+        # Define observation sub-spaces
+        map_obs_space = gym.spaces.Box(low=0, high=1,
+                                   shape=(self.map_size, self.map_size, self.obs_channels),
+                                   dtype=np.float32)
+        # Units features: [x_norm, y_norm, energy_norm, alive_flag]
+        units_obs_space = gym.spaces.Box(low=0, high=1,
+                                     shape=(self.max_units, 4),
+                                     dtype=np.float32)
+        player_obs_space = gym.spaces.Dict({"map": map_obs_space, "units": units_obs_space})
+        self.observation_space = spaces.Dict({"player_0": player_obs_space, "player_1": player_obs_space})
+        # Action space: Dict of {player_0: MultiDiscrete([...]), player_1: MultiDiscrete([...])}
+        # Each player's action is a vector of length max_units (one action per unit).
+        # 0-4 = move (0: stay, 1: up, 2: right, 3: down, 4: left)
+        # 5+ = sap target relative offset (dx, dy) within range.
+        sap_target_count = (2 * self.unit_sap_range + 1) ** 2
+        total_actions_per_unit = 5 + sap_target_count
+        self.action_space = spaces.Dict({
+            "player_0": spaces.MultiDiscrete([total_actions_per_unit] * self.max_units),
+            "player_1": spaces.MultiDiscrete([total_actions_per_unit] * self.max_units)
         })
-        
-        self.max_steps = Global.MAX_STEPS_IN_MATCH
-        self.current_step = 0
+        # Random number generator
+        self._np_random, _ = gym.utils.seeding.np_random()
+        # Initialize environment state
+        self.reset()
 
-        # Full map state: map tiles, relic markers, energy map
-        self.tile_map = None     # -1 unknown, 0 empty, 1 Nebula, 2 Asteroid
-        self.relic_map = None    # Relic existence marker, 1 indicates presence
-        self.energy_map = None   # Energy value for each tile
-        
-        # Unit state: lists of allied and enemy units, each unit is represented as a dictionary {"x": int, "y": int, "energy": int}
-        self.team_units = []    # Allied units
-        self.enemy_units = []   # Enemy units
-        
-        # Spawn points: allies spawn at top-left, enemies spawn at bottom-right
-        self.team_spawn = (0, 0)
-        self.enemy_spawn = (SPACE_SIZE - 1, SPACE_SIZE - 1)
-        
-        # Exploration record: a boolean array for the full map, recording the tiles seen by the combined vision of allied units (recorded only once globally)
-        self.visited = None
-        
-        # Team score (allied score)
-        self.score = 0
-        
-        # Environment configuration parameters (env_cfg)
-        self.env_cfg = {
-            "map_width": SPACE_SIZE,
-            "map_height": SPACE_SIZE,
-            "max_steps_in_match": Global.MAX_STEPS_IN_MATCH,
-            "unit_move_cost": Global.UNIT_MOVE_COST,
-            "unit_sap_cost": Global.UNIT_SAP_COST if hasattr(Global, "UNIT_SAP_COST") else 30,
-            "unit_sap_range": Global.UNIT_SAP_RANGE,
-        }
-        
-        # New: for rewards related to relic configurations
-        self.relic_configurations = []   # list of (center_x, center_y, mask (5x5 boolean))
-        self.potential_visited = None      # Record for the whole map, shape (SPACE_SIZE, SPACE_SIZE)
-        self.team_points_space = None      # Record for the whole map indicating which tiles have already contributed a team point
-
-        self._init_state()
-
-    def _init_state(self):
-        """Initialize full map state, units, and records"""
-        num_tiles = SPACE_SIZE * SPACE_SIZE
-        
-        # Initialize tile_map: randomly set parts to Nebula (1) or Asteroid (2)
-        self.tile_map = np.zeros((SPACE_SIZE, SPACE_SIZE), dtype=np.int8)
-        num_nebula = int(num_tiles * 0.1)
-        num_asteroid = int(num_tiles * 0.1)
-        indices = np.random.choice(num_tiles, num_nebula + num_asteroid, replace=False)
-        flat_tiles = self.tile_map.flatten()
-        flat_tiles[indices[:num_nebula]] = 1
-        flat_tiles[indices[num_nebula:]] = 2
-        self.tile_map = flat_tiles.reshape((SPACE_SIZE, SPACE_SIZE))
-        
-        # Initialize relic_map: randomly select 3 positions and set them to 1 (indicating a relic exists)
-        self.relic_map = np.zeros((SPACE_SIZE, SPACE_SIZE), dtype=np.int8)
-        relic_indices = np.random.choice(num_tiles, 3, replace=False)
-        flat_relic = self.relic_map.flatten()
-        flat_relic[relic_indices] = 1
-        self.relic_map = flat_relic.reshape((SPACE_SIZE, SPACE_SIZE))
-        
-        # Initialize energy_map: randomly generate 2 energy nodes, set their value to MAX_ENERGY_PER_TILE, rest are 0
-        self.energy_map = np.zeros((SPACE_SIZE, SPACE_SIZE), dtype=np.int8)
-        num_energy_nodes = 2
-        indices_energy = np.random.choice(num_tiles, num_energy_nodes, replace=False)
-        flat_energy = self.energy_map.flatten()
-        for idx in indices_energy:
-            flat_energy[idx] = Global.MAX_ENERGY_PER_TILE
-        self.energy_map = flat_energy.reshape((SPACE_SIZE, SPACE_SIZE))
-        
-        # Initialize allied units: initially generate 1 unit at the allied spawn point
-        self.team_units = []
-        spawn_x, spawn_y = self.team_spawn
-        self.team_units.append({"x": spawn_x, "y": spawn_y, "energy": 100})
-        
-        # Initialize enemy units: initially generate 1 unit at the enemy spawn point
-        self.enemy_units = []
-        spawn_x_e, spawn_y_e = self.enemy_spawn
-        self.enemy_units.append({"x": spawn_x_e, "y": spawn_y_e, "energy": 100})
-        
-        # Initialize exploration record: create a full map boolean array, marking tiles seen by the combined vision of allied units
-        self.visited = np.zeros((SPACE_SIZE, SPACE_SIZE), dtype=bool)
-        union_mask = self.get_global_sensor_mask()
-        self.visited = union_mask.copy()
-        
-        # Initialize team score
-        self.score = 0
-        
-        # New: Initialize relic configurations and potential point records
-        self.relic_configurations = []
-        relic_coords = np.argwhere(self.relic_map == 1)
-        for (y, x) in relic_coords:
-            # Generate a 5x5 mask, randomly select 8 cells to be True (for training, consider selecting 10 to avoid too sparse rewards)
-            mask = np.zeros((5,5), dtype=bool)
-            indices = np.random.choice(25, 8, replace=False)
-            mask_flat = mask.flatten()
-            mask_flat[indices] = True
-            mask = mask_flat.reshape((5,5))
-            self.relic_configurations.append((x, y, mask))
-        self.potential_visited = np.zeros((SPACE_SIZE, SPACE_SIZE), dtype=bool)
-        self.team_points_space = np.zeros((SPACE_SIZE, SPACE_SIZE), dtype=np.int8)
-        
-        self.current_step = 0
-
-    def compute_unit_vision(self, unit):
-        """
-        Calculate an independent sensor mask based on the given unit's position.
-        The range is determined by the unit's sensor range (Chebyshev distance), and the contribution 
-        is reduced for Nebula tiles.
-        No wrapping is applied; only tiles within the map are considered.
-        Returns a boolean matrix with shape (SPACE_SIZE, SPACE_SIZE).
-        """
-        sensor_range = Global.UNIT_SENSOR_RANGE
-        nebula_reduction = 2
-        vision = np.zeros((SPACE_SIZE, SPACE_SIZE), dtype=np.float32)
-        x, y = unit["x"], unit["y"]
-        for dy in range(-sensor_range, sensor_range + 1):
-            for dx in range(-sensor_range, sensor_range + 1):
-                new_x = x + dx
-                new_y = y + dy
-                if not (0 <= new_x < SPACE_SIZE and 0 <= new_y < SPACE_SIZE):
-                    continue
-                contrib = sensor_range + 1 - max(abs(dx), abs(dy))
-                if self.tile_map[new_y, new_x] == 1:
-                    contrib -= nebula_reduction
-                vision[new_y, new_x] += contrib
-        return vision > 0
-
-    def get_global_sensor_mask(self):
-        """
-        Return the union (logical OR) of the sensor masks of all allied units.
-        """
-        mask = np.zeros((SPACE_SIZE, SPACE_SIZE), dtype=bool)
-        for unit in self.team_units:
-            mask |= self.compute_unit_vision(unit)
-        return mask
-
-    def get_unit_obs(self, unit):
-        """
-        Construct a local observation dictionary based on the independent sensor mask of the given unit,
-        in the fixed JSON format as required by the competition.
-        Only the area visible to the unit is used for filtering.
-        """
-        sensor_mask = self.compute_unit_vision(unit)
-        map_tile_type = np.where(sensor_mask, self.tile_map, -1)
-        map_energy = np.where(sensor_mask, self.energy_map, -1)
-        map_features = {"tile_type": map_tile_type, "energy": map_energy}
-        sensor_mask_int = sensor_mask.astype(np.int8)
-        
-        # Construct unit information, filtering allied and enemy units using the unit's sensor mask
-        units_position = np.full((NUM_TEAMS, MAX_UNITS, 2), -1, dtype=np.int32)
-        units_energy = np.full((NUM_TEAMS, MAX_UNITS, 1), -1, dtype=np.int32)
-        units_mask = np.zeros((NUM_TEAMS, MAX_UNITS), dtype=np.int8)
-        for i, u in enumerate(self.team_units):
-            ux, uy = u["x"], u["y"]
-            if sensor_mask[uy, ux]:
-                units_position[0, i] = np.array([ux, uy])
-                units_energy[0, i] = u["energy"]
-                units_mask[0, i] = 1
-        for i, u in enumerate(self.enemy_units):
-            ux, uy = u["x"], u["y"]
-            if sensor_mask[uy, ux]:
-                units_position[1, i] = np.array([ux, uy])
-                units_energy[1, i] = u["energy"]
-                units_mask[1, i] = 1
-        units = {"position": units_position, "energy": units_energy}
-        
-        # Construct relic_nodes information: only show relic coordinates within the sensor_mask
-        relic_coords = np.argwhere(self.relic_map == 1)
-        relic_nodes = np.full((MAX_RELIC_NODES, 2), -1, dtype=np.int32)
-        relic_nodes_mask = np.zeros(MAX_RELIC_NODES, dtype=np.int8)
-        idx = 0
-        for (ry, rx) in relic_coords:
-            if idx >= MAX_RELIC_NODES:
-                break
-            if sensor_mask[ry, rx]:
-                relic_nodes[idx] = np.array([rx, ry])
-                relic_nodes_mask[idx] = 1
-            else:
-                relic_nodes[idx] = np.array([-1, -1])
-                relic_nodes_mask[idx] = 0
-            idx += 1
-        
-        team_points = np.array([self.score, 0], dtype=np.int32)
-        team_wins = np.array([0, 0], dtype=np.int32)
-        steps = self.current_step
-        match_steps = self.current_step
-        
-        obs = {
-            "units": units,
-            "units_mask": units_mask,
-            "sensor_mask": sensor_mask_int,
-            "map_features": map_features,
-            "relic_nodes_mask": relic_nodes_mask,
-            "relic_nodes": relic_nodes,
-            "team_points": team_points,
-            "team_wins": team_wins,
-            "steps": steps,
-            "match_steps": match_steps
-        }
-        observation = {
-            "obs": obs,
-            "remainingOverageTime": 60,
-            "player": "player_0",
-            "info": {"env_cfg": self.env_cfg}
-        }
-        return observation
-
-    def get_obs(self):
-        """
-        Return the flattened global observation dictionary, ensuring that all keys exactly match the observation_space.
-        """
-        sensor_mask = self.get_global_sensor_mask()
-        sensor_mask_int = sensor_mask.astype(np.int8)
-        
-        map_features_tile_type = np.where(sensor_mask, self.tile_map, -1)
-        map_features_energy = np.where(sensor_mask, self.energy_map, -1)
-        
-        units_position = np.full((NUM_TEAMS, MAX_UNITS, 2), -1, dtype=np.int32)
-        units_energy = np.full((NUM_TEAMS, MAX_UNITS, 1), -1, dtype=np.int32)
-        units_mask = np.zeros((NUM_TEAMS, MAX_UNITS), dtype=np.int8)
-
-        # Allied units
-        for i, unit in enumerate(self.team_units):
-            ux, uy = unit["x"], unit["y"]
-            if sensor_mask[uy, ux]:
-                units_position[0, i] = np.array([ux, uy])
-                units_energy[0, i] = unit["energy"]
-                units_mask[0, i] = 1
-        # Enemy units
-        for i, unit in enumerate(self.enemy_units):
-            ux, uy = unit["x"], unit["y"]
-            if sensor_mask[uy, ux]:
-                units_position[1, i] = np.array([ux, uy])
-                units_energy[1, i] = unit["energy"]
-                units_mask[1, i] = 1
-                
-        relic_coords = np.argwhere(self.relic_map == 1)
-        relic_nodes = np.full((MAX_RELIC_NODES, 2), -1, dtype=np.int32)
-        relic_nodes_mask = np.zeros((MAX_RELIC_NODES,), dtype=np.int8)
-        idx = 0
-        for (ry, rx) in relic_coords:
-            if idx >= MAX_RELIC_NODES:
-                break
-            if sensor_mask[ry, rx]:
-                relic_nodes[idx] = np.array([rx, ry])
-                relic_nodes_mask[idx] = 1
-            else:
-                relic_nodes[idx] = np.array([-1, -1])
-                relic_nodes_mask[idx] = 0
-            idx += 1
-    
-        team_points = np.array([self.score, 0], dtype=np.int32)
-        team_wins = np.array([0, 0], dtype=np.int32)
-        steps = np.array([self.current_step], dtype=np.int32)
-        match_steps = np.array([self.current_step], dtype=np.int32)
-        remainingOverageTime = np.array([60], dtype=np.int32)
-        
-        env_cfg_map_width = np.array([self.env_cfg["map_width"]], dtype=np.int32)
-        env_cfg_map_height = np.array([self.env_cfg["map_height"]], dtype=np.int32)
-        env_cfg_max_steps_in_match = np.array([self.env_cfg["max_steps_in_match"]], dtype=np.int32)
-        env_cfg_unit_move_cost = np.array([self.env_cfg["unit_move_cost"]], dtype=np.int32)
-        env_cfg_unit_sap_cost = np.array([self.env_cfg["unit_sap_cost"]], dtype=np.int32)
-        env_cfg_unit_sap_range = np.array([self.env_cfg["unit_sap_range"]], dtype=np.int32)
-        
-        flat_obs = {
-            "units_position": units_position,
-            "units_energy": units_energy,
-            "units_mask": units_mask,
-            "sensor_mask": sensor_mask_int,
-            "map_features_tile_type": map_features_tile_type,
-            "map_features_energy": map_features_energy,
-            "relic_nodes_mask": relic_nodes_mask,
-            "relic_nodes": relic_nodes,
-            "team_points": team_points,
-            "team_wins": team_wins,
-            "steps": steps,
-            "match_steps": match_steps,
-            "remainingOverageTime": remainingOverageTime,
-            "env_cfg_map_width": env_cfg_map_width,
-            "env_cfg_map_height": env_cfg_map_height,
-            "env_cfg_max_steps_in_match": env_cfg_max_steps_in_match,
-            "env_cfg_unit_move_cost": env_cfg_unit_move_cost,
-            "env_cfg_unit_sap_cost": env_cfg_unit_sap_cost,
-            "env_cfg_unit_sap_range": env_cfg_unit_sap_range
-        }
-        
-        return flat_obs
-    
     def reset(self):
-        """
-        Reset the environment state and return the initial flattened observation data.
-        """
-        self._init_state()
-        return self.get_obs()
+        """Reset the environment to the start of a new match (episode)."""
+        # Reset step count and points
+        self.step_count = 0
+        self.points = {"player_0": 0, "player_1": 0}
+        # Reset discovered tiles for fog of war exploration
+        self.discovered = {"player_0": np.zeros((self.map_size, self.map_size), dtype=bool),
+                           "player_1": np.zeros((self.map_size, self.map_size), dtype=bool)}
+        # Initialize map tiles and fields
+        self.map_tiles = np.zeros((self.map_size, self.map_size), dtype=np.int32)
+        self.energy_field = np.zeros((self.map_size, self.map_size), dtype=np.float32)
+        self.relic_mask = np.zeros((self.map_size, self.map_size), dtype=bool)
+        # Generate terrain and objects symmetrically
+        # 1. Asteroids (impassable)&#8203;:contentReference[oaicite:30]{index=30}
+        placed = set()
+        num_asteroids = 10
+        for _ in range(num_asteroids):
+            x = self._np_random.integers(0, self.map_size)
+            y = self._np_random.integers(0, self.map_size)
+            sym = (self.map_size - 1 - x, self.map_size - 1 - y)
+            if (x, y) in placed or (x, y) == sym:
+                continue
+            if (x, y) in (self.spawn_locs["player_0"], self.spawn_locs["player_1"]):
+                continue  # don't block spawn
+            placed.add((x, y)); placed.add(sym)
+            self.map_tiles[x, y] = 1  # asteroid
+            self.map_tiles[sym[0], sym[1]] = 1
+        # 2. Nebula (passable, vision/energy reduction)&#8203;:contentReference[oaicite:31]{index=31}&#8203;:contentReference[oaicite:32]{index=32}
+        placed = set()
+        num_nebula = 10
+        for _ in range(num_nebula):
+            x = self._np_random.integers(0, self.map_size)
+            y = self._np_random.integers(0, self.map_size)
+            sym = (self.map_size - 1 - x, self.map_size - 1 - y)
+            if self.map_tiles[x, y] != 0 or (x, y) in placed or (x, y) == sym:
+                continue
+            if (x, y) in (self.spawn_locs["player_0"], self.spawn_locs["player_1"]):
+                continue
+            placed.add((x, y)); placed.add(sym)
+            self.map_tiles[x, y] = 2  # nebula
+            self.map_tiles[sym[0], sym[1]] = 2
+        # 3. Energy Nodes (provide energy field)&#8203;:contentReference[oaicite:33]{index=33}
+        energy_node_positions = []
+        num_energy = 3
+        for _ in range(num_energy):
+            x = self._np_random.integers(0, self.map_size)
+            y = self._np_random.integers(0, self.map_size)
+            sym = (self.map_size - 1 - x, self.map_size - 1 - y)
+            if self.map_tiles[x, y] != 0 or (x, y) == sym:
+                continue
+            if (x, y) in (self.spawn_locs["player_0"], self.spawn_locs["player_1"]):
+                continue
+            self.map_tiles[x, y] = 3; self.map_tiles[sym[0], sym[1]] = 3
+            energy_node_positions.append((x, y)); energy_node_positions.append(sym)
+        # Precompute energy field values from nodes (simple distance-based function)
+        for (nx, ny) in energy_node_positions:
+            max_e = 10  # maximum energy value at the node
+            for i in range(self.map_size):
+                for j in range(self.map_size):
+                    dist = abs(i - nx) + abs(j - ny)  # Manhattan distance for simplicity
+                    contrib = max(0, max_e - dist)
+                    self.energy_field[i, j] += contrib
+        self.energy_field = np.clip(self.energy_field, 0, 20)
+        # 4. Relic Nodes (hidden scoring tiles)&#8203;:contentReference[oaicite:34]{index=34}
+        x = self._np_random.integers(5, self.map_size-5)
+        y = self._np_random.integers(5, self.map_size-5)
+        sym = (self.map_size - 1 - x, self.map_size - 1 - y)
+        if self.map_tiles[x, y] == 0 and (x, y) != sym:
+            self.map_tiles[x, y] = 4; self.map_tiles[sym[0], sym[1]] = 4
+            # Generate a random 5x5 mask of scoring tiles around each relic node&#8203;:contentReference[oaicite:35]{index=35}
+            mask_size = 5
+            mask = self._np_random.random((mask_size, mask_size)) < 0.2  # 20% chance each
+            cx, cy = x, y; sx, sy = sym
+            for dx in range(-mask_size//2, mask_size//2+1):
+                for dy in range(-mask_size//2, mask_size//2+1):
+                    if mask[dx + mask_size//2, dy + mask_size//2]:
+                        tx, ty = cx+dx, cy+dy
+                        tx2, ty2 = sx+dx, sy+dy
+                        if 0 <= tx < self.map_size and 0 <= ty < self.map_size:
+                            self.relic_mask[tx, ty] = True
+                        if 0 <= tx2 < self.map_size and 0 <= ty2 < self.map_size:
+                            self.relic_mask[tx2, ty2] = True
+        # Initialize units (all dead to start, then spawn initial units)
+        for pid in self.units:
+            self.units[pid][:] = np.array([0, 0, 0, 0])
+        # Spawn one unit for each team at the spawn locations
+        for pid, (sx, sy) in self.spawn_locs.items():
+            uid = 0
+            # Ensure spawn tile not asteroid
+            if self.map_tiles[sx, sy] == 1:
+                self.map_tiles[sx, sy] = 0
+            self.units[pid][uid] = [1, sx, sy, self.init_unit_energy]
+        # Return initial observations for both players
+        return self._get_observation()
 
-    def _spawn_unit(self, team):
-        """Spawn a new unit: allied or enemy, with an initial energy of 100, spawning at their respective spawn points"""
-        if team == 0:
-            spawn_x, spawn_y = self.team_spawn
-            self.team_units.append({"x": spawn_x, "y": spawn_y, "energy": 100})
-        elif team == 1:
-            spawn_x, spawn_y = self.enemy_spawn
-            self.enemy_units.append({"x": spawn_x, "y": spawn_y, "energy": 100})
+    def _get_observation(self):
+        """
+        Compute the observation for both players with fog of war applied.
+        Each observation contains a 'map' (spatial features) and a 'units' array of per-unit stats.
+        """
+        obs = {}
+        for pid in ["player_0", "player_1"]:
+            visible = np.zeros((self.map_size, self.map_size), dtype=bool)
+            # Compute team vision mask&#8203;:contentReference[oaicite:36]{index=36}&#8203;:contentReference[oaicite:37]{index=37}
+            for alive, ux, uy, energy in self.units[pid]:
+                if alive == 0:
+                    continue
+                # Vision contribution from this unit
+                for dx in range(-self.unit_sensor_range, self.unit_sensor_range + 1):
+                    for dy in range(-self.unit_sensor_range, self.unit_sensor_range + 1):
+                        tx, ty = ux + dx, uy + dy
+                        if 0 <= tx < self.map_size and 0 <= ty < self.map_size:
+                            # Vision power decreases with distance
+                            vis_power = 1 + self.unit_sensor_range - max(abs(dx), abs(dy))
+                            if dx == 0 and dy == 0:
+                                vis_power += 10  # ensure unit sees itself&#8203;:contentReference[oaicite:38]{index=38}
+                            if self.map_tiles[tx, ty] == 2:  # nebula tile causes vision reduction
+                                vis_power -= self.nebula_vision_reduction
+                            if vis_power > 0:
+                                visible[tx, ty] = True
+            # Mark newly discovered tiles for exploration bonus
+            new_visible = visible & ~self.discovered[pid]
+            self.discovered[pid] |= visible
+            new_tiles_count = np.sum(new_visible)
+            if not hasattr(self, "new_tiles_observed"):
+                self.new_tiles_observed = {}
+            self.new_tiles_observed[pid] = int(new_tiles_count)
+            # Build map feature channels
+            max_energy_val = 20.0
+            asteroid_chan = (self.map_tiles == 1) & visible
+            nebula_chan = (self.map_tiles == 2) & visible
+            energy_chan = np.where(visible, self.energy_field / max_energy_val, 0)
+            relic_chan = (self.map_tiles == 4) & visible
+            friendly_chan = np.zeros((self.map_size, self.map_size), dtype=float)
+            enemy_chan = np.zeros((self.map_size, self.map_size), dtype=float)
+            # Friendly units presence
+            for alive, ux, uy, energy in self.units[pid]:
+                if alive == 1:
+                    friendly_chan[ux, uy] += 1
+            friendly_chan = np.clip(friendly_chan, 0, 1)
+            # Enemy units presence (only if visible)
+            opp = "player_1" if pid == "player_0" else "player_0"
+            for alive, ex, ey, e_energy in self.units[opp]:
+                if alive == 1 and visible[ex, ey]:
+                    enemy_chan[ex, ey] += 1
+            enemy_chan = np.clip(enemy_chan, 0, 1)
+            # Stack channels into an array (H x W x C)
+            map_channels = np.stack([
+                asteroid_chan.astype(float),
+                nebula_chan.astype(float),
+                energy_chan.astype(float),
+                relic_chan.astype(float),
+                friendly_chan.astype(float),
+                enemy_chan.astype(float)
+            ], axis=-1)
+            # Build per-unit feature array
+            units_arr = np.zeros((self.max_units, 4), dtype=float)
+            for uid in range(self.max_units):
+                alive, ux, uy, energy = self.units[pid][uid]
+                if alive == 1:
+                    units_arr[uid, 0] = ux / (self.map_size - 1)  # x position (normalized)
+                    units_arr[uid, 1] = uy / (self.map_size - 1)  # y position (normalized)
+                    units_arr[uid, 2] = energy / self.max_unit_energy  # energy (normalized)
+                    units_arr[uid, 3] = 1.0  # alive flag
+                else:
+                    units_arr[uid, 3] = 0.0
+            # Convert to torch tensors for efficient usage in PyTorch-based PPO
+            obs[pid] = {
+                "map": torch.from_numpy(map_channels).float(),
+                "units": torch.from_numpy(units_arr).float()
+            }
+        return obs
 
     def step(self, actions):
         """
-        Update the environment state based on the actions and return (observation, reward, done, info).
-        Modified reward logic:
-          1. Each unit computes its own unit_reward individually.
-          2. If a movement action causes the unit to move off the map or the target tile is an Asteroid, 
-             the action is deemed invalid and unit_reward is reduced by 0.2.
-          3. Sap Action:
-             - Check if a relic is visible in the unit's local observation (relic_nodes_mask);
-             - If visible, count the number of enemy units in the unit's 8-neighborhood; if the count is >=2, 
-               the sap reward equals +1.0 times the number of enemy units; otherwise, subtract 2.0;
-             - If no relic is visible, subtract 2.0.
-          4. Non-sap Actions:
-             - After a successful move, check if the unit is located at a potential point within any relic configuration:
-                  * If this is the first visit to the potential point, add +2.0 to unit_reward and mark it as visited;
-                  * If the potential point has not yet yielded a team point, then increase self.score by 1, 
-                    add +3.0 to unit_reward, and mark it as team_points_space;
-                  * If already on team_points_space, then award +3.0 per turn;
-             - If the unit is on an energy node (energy == Global.MAX_ENERGY_PER_TILE), add +0.2 to unit_reward;
-             - If the unit is on a Nebula (tile_type == 1), subtract 0.2 from unit_reward;
-             - If after moving the unit overlaps with an enemy unit and the enemy's energy is lower than the unit's, 
-               then for each such enemy unit, add +1.0 reward.
-          5. Global Exploration Reward: For every new tile discovered by the combined vision of all allied units, add +0.1 reward per tile.
-          6. At the end of each step, the final reward is computed as: total_reward * 0.5 + score_increase * 0.5.
-          7. Every 3 steps, spawn a new unit (if the maximum units limit has not been reached); 
-             every 20 steps, shift the entire map, relic map, and energy map, as well as enemy unit positions 
-             (shifting enemy units to the right by 1 tile with boundary checks).
+        Execute one time step with actions from both players.
+        `actions` is a dict: {"player_0": action_array, "player_1": action_array},
+        where each action_array is length `max_units`. Returns (obs, rewards, done, info).
         """
-        prev_score = self.score
-        
-        self.current_step += 1
-        total_reward = 0.0
-
-        # Process each allied unit
-        for idx, unit in enumerate(self.team_units):
-            unit_reward = 0.0
-            act = actions[idx]
-            action_enum = ActionType(act)
-            # print(f"Unit {idx} action: {action_enum}", file=sys.stderr)
-            
-            # Obtain the local observation for the unit
-            unit_obs = self.get_unit_obs(unit)
-            
-            # If the action is sap
-            if action_enum == ActionType.sap:
-                # Check if a relic is visible in the local observation
-                if np.any(unit_obs["obs"]["relic_nodes_mask"] == 1):
-                    # Count the number of enemy units in the unit's 8-neighborhood
-                    enemy_count = 0
-                    for dy in [-1, 0, 1]:
-                        for dx in [-1, 0, 1]:
-                            if dx == 0 and dy == 0:
-                                continue
-                            nx = unit["x"] + dx
-                            ny = unit["y"] + dy
-                            if not (0 <= nx < SPACE_SIZE and 0 <= ny < SPACE_SIZE):
-                                continue
-                            for enemy in self.enemy_units:
-                                if enemy["x"] == nx and enemy["y"] == ny:
-                                    enemy_count += 1
-                    if enemy_count >= 2:
-                        unit_reward += 2.0 * enemy_count #1.0 (UPDATED)
+        rewards = {"player_0": 0.0, "player_1": 0.0}
+        wasted_energy = {"player_0": 0, "player_1": 0}   # energy spent on ineffective actions
+        invalid_actions = {"player_0": 0, "player_1": 0}  # actions that could not be executed
+        # Store energy after move (before sap) for collision/void calculations
+        energy_after_move = {"player_0": [], "player_1": []}
+        # Phase 1: Movement for both players&#8203;:contentReference[oaicite:39]{index=39}
+        for pid in ["player_0", "player_1"]:
+            acts = actions[pid]
+            # Convert actions to list for iteration (accept torch or numpy inputs)
+            if isinstance(acts, np.ndarray):
+                acts = acts.tolist()
+            elif isinstance(acts, torch.Tensor):
+                acts = acts.cpu().numpy().tolist()
+            for uid, action in enumerate(acts):
+                alive, x, y, energy = self.units[pid][uid]
+                if alive == 0:
+                    continue  # skip if no unit
+                action = int(action)
+                if action < 5:
+                    # Movement action (0: stay, 1: up, 2: right, 3: down, 4: left)
+                    dx = dy = 0
+                    if action == 1: dx = -1   # up (decrease x)
+                    elif action == 2: dy = 1  # right (increase y)
+                    elif action == 3: dx = 1   # down (increase x)
+                    elif action == 4: dy = -1  # left (decrease y)
+                    if action == 0:
+                        # stay still (no cost)
+                        pass
+                    elif energy >= self.unit_move_cost:
+                        new_x, new_y = x + dx, y + dy
+                        if new_x < 0 or new_x >= self.map_size or new_y < 0 or new_y >= self.map_size:
+                            # Move off map: no movement, but energy consumed&#8203;:contentReference[oaicite:40]{index=40}
+                            self.units[pid][uid, 3] = energy - self.unit_move_cost
+                            wasted_energy[pid] += self.unit_move_cost
+                        elif self.map_tiles[new_x, new_y] == 1:
+                            # Move into asteroid: blocked, energy consumed&#8203;:contentReference[oaicite:41]{index=41}
+                            self.units[pid][uid, 3] = energy - self.unit_move_cost
+                            wasted_energy[pid] += self.unit_move_cost
+                        else:
+                            # Valid move (including moving into empty, nebula, or any tile that is not asteroid)
+                            self.units[pid][uid, 1] = new_x
+                            self.units[pid][uid, 2] = new_y
+                            self.units[pid][uid, 3] = energy - self.unit_move_cost
                     else:
-                        unit_reward -= 0.5 #1.0 (UPDATED)
+                        # Not enough energy to move – action invalid (no effect)
+                        invalid_actions[pid] += 1
                 else:
-                    unit_reward -= 0.5 #1.0 (UPDATED)
-                # Sap action does not change the position
+                    # Sap action will be processed in next phase
+                    pass
+            # Record energies after all moves (before saps) for collision checks
+            energy_after_move[pid] = [e for (_, _, _, e) in self.units[pid]]
+        # Phase 2: Sapping actions&#8203;:contentReference[oaicite:42]{index=42}
+        for pid in ["player_0", "player_1"]:
+            opp = "player_1" if pid == "player_0" else "player_0"
+            acts = actions[pid]
+            if isinstance(acts, np.ndarray):
+                acts = acts.tolist()
+            elif isinstance(acts, torch.Tensor):
+                acts = acts.cpu().numpy().tolist()
+            for uid, action in enumerate(acts):
+                alive, x, y, energy = self.units[pid][uid]
+                if alive == 0 or action < 5:
+                    continue  # skip if unit is dead or not a sap action
+                offset = action - 5
+                side = 2 * self.unit_sap_range + 1
+                dx = offset // side - self.unit_sap_range
+                dy = offset % side - self.unit_sap_range
+                if energy >= self.unit_sap_cost:
+                    # Enough energy to perform sap
+                    self.units[pid][uid, 3] = energy - self.unit_sap_cost  # spend energy
+                    target_x, target_y = x + dx, y + dy
+                    # Direct sap on target tile (within range square)&#8203;:contentReference[oaicite:43]{index=43}
+                    if 0 <= target_x < self.map_size and 0 <= target_y < self.map_size:
+                        for eid, (e_alive, ex, ey, e_energy) in enumerate(self.units[opp]):
+                            if e_alive == 1 and ex == target_x and ey == target_y:
+                                # Enemy on target tile loses full sap cost energy
+                                self.units[opp][eid, 3] = e_energy - self.unit_sap_cost
+                    # Splash sap on adjacent 8 tiles (drop-off)&#8203;:contentReference[oaicite:44]{index=44}
+                    sap_drop = int(self.unit_sap_cost * self.unit_sap_dropoff)
+                    if 0 <= target_x < self.map_size and 0 <= target_y < self.map_size:
+                        for dx2 in [-1, 0, 1]:
+                            for dy2 in [-1, 0, 1]:
+                                if dx2 == 0 and dy2 == 0:
+                                    continue
+                                nx, ny = target_x + dx2, target_y + dy2
+                                if 0 <= nx < self.map_size and 0 <= ny < self.map_size:
+                                    for eid, (e_alive, ex, ey, e_energy) in enumerate(self.units[opp]):
+                                        if e_alive == 1 and ex == nx and ey == ny:
+                                            # Enemy adjacent to target loses reduced energy
+                                            self.units[opp][eid, 3] = e_energy - sap_drop
+                    # If target is out of bounds (sap into space), or no enemies hit, count as waste
+                    if not (0 <= target_x < self.map_size and 0 <= target_y < self.map_size):
+                        wasted_energy[pid] += self.unit_sap_cost
+                    else:
+                        # Check if any enemy was within the 3x3 sap area
+                        hit = False
+                        for eid, (e_alive, ex, ey, e_energy) in enumerate(self.units[opp]):
+                            if e_alive == 1 and abs(ex - (x+dx)) <= 1 and abs(ey - (y+dy)) <= 1:
+                                hit = True
+                                break
+                        if not hit:
+                            wasted_energy[pid] += self.unit_sap_cost
+                else:
+                    # Not enough energy to sap – invalid action
+                    invalid_actions[pid] += 1
+        # Phase 3: Collisions (resolve units on same tile)&#8203;:contentReference[oaicite:45]{index=45}
+        removed = {"player_0": [False]*self.max_units, "player_1": [False]*self.max_units}
+        # Map positions to lists of units from each team
+        pos_to_units = {}
+        for pid in ["player_0", "player_1"]:
+            for uid, (alive, ux, uy, energy) in enumerate(self.units[pid]):
+                if alive == 1:
+                    pos = (ux, uy)
+                    pos_to_units.setdefault(pos, {"player_0": [], "player_1": []})
+                    pos_to_units[pos][pid].append(uid)
+        for pos, teams in pos_to_units.items():
+            if teams["player_0"] and teams["player_1"]:
+                # Both teams have units on this tile, determine outcome by total energy&#8203;:contentReference[oaicite:46]{index=46}
+                total_p0 = sum(energy_after_move["player_0"][uid] for uid in teams["player_0"])
+                total_p1 = sum(energy_after_move["player_1"][uid] for uid in teams["player_1"])
+                if total_p0 > total_p1:
+                    # player_0 wins: remove all player_1 units on this tile
+                    for uid in teams["player_1"]:
+                        self.units["player_1"][uid, 0] = 0
+                        removed["player_1"][uid] = True
+                elif total_p1 > total_p0:
+                    # player_1 wins
+                    for uid in teams["player_0"]:
+                        self.units["player_0"][uid, 0] = 0
+                        removed["player_0"][uid] = True
+                else:
+                    # tie: all units on this tile are removed
+                    for uid in teams["player_0"]:
+                        self.units["player_0"][uid, 0] = 0
+                        removed["player_0"][uid] = True
+                    for uid in teams["player_1"]:
+                        self.units["player_1"][uid, 0] = 0
+                        removed["player_1"][uid] = True
+        # Energy Void Fields (passive sapping around each unit)&#8203;:contentReference[oaicite:47]{index=47}
+        void_map_p0 = np.zeros((self.map_size, self.map_size), dtype=int)
+        void_map_p1 = np.zeros((self.map_size, self.map_size), dtype=int)
+        # Each surviving unit contributes to enemy void map on adjacent tiles
+        for uid, (alive, x, y, energy) in enumerate(self.units["player_0"]):
+            if alive == 1 and not removed["player_0"][uid]:
+                e = energy_after_move["player_0"][uid]
+                void_strength = int(e * self.unit_energy_void_factor)  # energy contribution&#8203;:contentReference[oaicite:48]{index=48}
+                for dx, dy in [(1,0),(-1,0),(0,1),(0,-1)]:  # cardinal neighbors
+                    nx, ny = x+dx, y+dy
+                    if 0 <= nx < self.map_size and 0 <= ny < self.map_size:
+                        void_map_p0[nx, ny] += void_strength
+        for uid, (alive, x, y, energy) in enumerate(self.units["player_1"]):
+            if alive == 1 and not removed["player_1"][uid]:
+                e = energy_after_move["player_1"][uid]
+                void_strength = int(e * self.unit_energy_void_factor)
+                for dx, dy in [(1,0),(-1,0),(0,1),(0,-1)]:
+                    nx, ny = x+dx, y+dy
+                    if 0 <= nx < self.map_size and 0 <= ny < self.map_size:
+                        void_map_p1[nx, ny] += void_strength
+        # Apply void damage to each unit from opposing team's void map
+        for pid, opp in [("player_0", "player_1"), ("player_1", "player_0")]:
+            for uid, (alive, x, y, energy) in enumerate(self.units[pid]):
+                if alive == 1 and not removed[pid][uid]:
+                    # total void strength from opponent affecting this tile
+                    V = void_map_p1[x, y] if pid == "player_0" else void_map_p0[x, y]
+                    # number of same-team units on this tile (share damage)&#8203;:contentReference[oaicite:49]{index=49}
+                    count = sum(1 for (a, ux, uy, en) in self.units[pid] if a == 1 and ux == x and uy == y)
+                    if count > 0:
+                        damage = V // count
+                        self.units[pid][uid, 3] = energy - damage
+        # Remove units with energy < 0 (killed by sap or void)&#8203;:contentReference[oaicite:50]{index=50}
+        for pid in ["player_0", "player_1"]:
+            for uid, (alive, x, y, energy) in enumerate(self.units[pid]):
+                if alive == 1 and energy < 0:
+                    self.units[pid][uid, 0] = 0
+        # Phase 4: Environment effects – energy recharge and nebula drain&#8203;:contentReference[oaicite:51]{index=51}&#8203;:contentReference[oaicite:52]{index=52}
+        for pid in ["player_0", "player_1"]:
+            for uid, (alive, x, y, energy) in enumerate(self.units[pid]):
+                if alive == 1:
+                    # Nebula tile causes energy reduction (not below 0)&#8203;:contentReference[oaicite:53]{index=53}
+                    if self.map_tiles[x, y] == 2:
+                        energy = max(0, energy - self.nebula_energy_reduction)
+                    # Energy field recharge from energy nodes&#8203;:contentReference[oaicite:54]{index=54}
+                    energy += int(self.energy_field[x, y])
+                    # Cap energy at max limit
+                    if energy > self.max_unit_energy:
+                        energy = self.max_unit_energy
+                    self.units[pid][uid, 3] = energy
+        # Phase 5: Spawn new units at factories (spawn_rate timing)
+        if (self.step_count + 1) % self.spawn_rate == 0:
+            for pid in ["player_0", "player_1"]:
+                # spawn at most one unit per team if there's capacity
+                for uid, (alive, _, _, _) in enumerate(self.units[pid]):
+                    if alive == 0:
+                        sx, sy = self.spawn_locs[pid]
+                        if self.map_tiles[sx, sy] == 1:  # clear asteroid if somehow present
+                            self.map_tiles[sx, sy] = 0
+                        self.units[pid][uid] = [1, sx, sy, self.init_unit_energy]
+                        break
+        # (Phase 6: vision updates already handled in observation, Phase 7: object drift not implemented)
+        # Phase 8: Relic point scoring&#8203;:contentReference[oaicite:55]{index=55}
+        points_gained = {"player_0": 0, "player_1": 0}
+        for pid in ["player_0", "player_1"]:
+            positions = set()
+            for uid, (alive, x, y, energy) in enumerate(self.units[pid]):
+                if alive == 1:
+                    pos = (x, y)
+                    if pos in positions:
+                        continue
+                    positions.add(pos)
+                    if self.relic_mask[x, y]:
+                        points_gained[pid] += 1
+                        # Each unique scoring tile yields at most one point per turn&#8203;:contentReference[oaicite:56]{index=56}
+            self.points[pid] += points_gained[pid]
+        # Calculate rewards for this step
+        for pid in ["player_0", "player_1"]:
+            # Relic points collected
+            rewards[pid] += points_gained[pid]
+            # Energy collected from nodes (sum of energy field values gained by all units, scaled)
+            energy_gain = 0
+            for alive, x, y, e in self.units[pid]:
+                if alive == 1:
+                    energy_gain += int(self.energy_field[x, y])
+            rewards[pid] += energy_gain * 0.01
+            # Penalty for wasted energy on ineffective actions
+            rewards[pid] -= wasted_energy[pid] * 0.01
+            # Penalty for invalid actions (very small)
+            rewards[pid] -= invalid_actions[pid] * 0.01
+        # Exploration bonus for newly discovered tiles
+        if hasattr(self, "new_tiles_observed"):
+            for pid in ["player_0", "player_1"]:
+                new_tiles = self.new_tiles_observed.get(pid, 0)
+                rewards[pid] += new_tiles * 0.01
+        # Advance turn
+        self.step_count += 1
+        done = False
+        if self.step_count >= self.max_steps:
+            done = True
+        # Get next observations
+        obs = self._get_observation()
+        # Info: include current score and winner at end
+        info = {"points": self.points.copy()}
+        if done:
+            if self.points["player_0"] > self.points["player_1"]:
+                info["winner"] = "player_0"
+            elif self.points["player_1"] > self.points["player_0"]:
+                info["winner"] = "player_1"
             else:
-                # Compute movement direction
-                if action_enum in [ActionType.up, ActionType.right, ActionType.down, ActionType.left]:
-                    dx, dy = action_enum.to_direction()
+                # Tie-breaker: higher total energy wins, otherwise tie
+                total_e0 = sum(e for (_, _, _, e) in self.units["player_0"])
+                total_e1 = sum(e for (_, _, _, e) in self.units["player_1"])
+                if total_e0 > total_e1:
+                    info["winner"] = "player_0"
+                elif total_e1 > total_e0:
+                    info["winner"] = "player_1"
                 else:
-                    dx, dy = (0, 0)
-                new_x = unit["x"] + dx
-                new_y = unit["y"] + dy
-                # Check boundaries and obstacles
-                if not (0 <= new_x < SPACE_SIZE and 0 <= new_y < SPACE_SIZE):
-                    new_x, new_y = unit["x"], unit["y"]
-                    unit_reward -= 0.4  # Out of bounds. Was 0.2 (UPDATED)
-                elif self.tile_map[new_y, new_x] == 2:
-                    new_x, new_y = unit["x"], unit["y"]
-                    unit_reward -= 0.4  # Hit an Asteroid. Was 0.2 (UPDATED)
-                else:
-                    # Successful move
-                    unit["x"], unit["y"] = new_x, new_y
-                    #UPDATE: Extra penalty if unit is near the edge (to encourage staying more central)
-                    edge_margin = 3  # for example, consider positions closer than 3 tiles to the edge as less desirable 
-                    if new_x < edge_margin or new_x >= SPACE_SIZE - edge_margin or new_y < edge_margin or new_y >= SPACE_SIZE - edge_margin:
-                        unit_reward -= 0.2  # penalty for being too close to the edge
-
-                
-                # Obtain updated local observation after moving
-                unit_obs = self.get_unit_obs(unit)
-                
-                # Check for relic configuration rewards: iterate over all relic configurations
-                # and determine if the unit is within the configuration (with boundary considerations)
-                for (rx, ry, mask) in self.relic_configurations:
-                    # Relic configuration area: center (rx, ry) ±2
-                    # If the unit is within the range [rx-2, rx+2] and [ry-2, ry+2]
-                    if rx - 2 <= unit["x"] <= rx + 2 and ry - 2 <= unit["y"] <= ry + 2:
-                        # Calculate the index in the configuration mask
-                        ix = unit["x"] - rx + 2
-                        iy = unit["y"] - ry + 2
-                        # Check if the index is within the mask range (with boundary considerations)
-                        if 0 <= ix < 5 and 0 <= iy < 5:
-                            # If the potential point has not been visited, then reward +2.0 and mark as visited
-                            if not mask[iy, ix]:
-                                if not self.potential_visited[unit["y"], unit["x"]]:
-                                    unit_reward += 2.0 #Was 1.5 (UPDATED)
-                                    self.potential_visited[unit["y"], unit["x"]] = True
-                            # If the potential point has actually contributed to team points, then reward +3.0
-                            else:
-                                # If this point has not yet generated a team point, then increase team score and reward +3.0,
-                                # and mark it as team_points_space
-                                if not self.team_points_space[unit["y"], unit["x"]]:
-                                    self.score += 1
-                                    unit_reward += 3.0
-                                    self.team_points_space[unit["y"], unit["x"]] = True
-                                else:
-                                    # If already on team_points_space, then reward +3.0 per turn
-                                    self.score += 1
-                                    unit_reward += 3.0
-                # Energy node reward
-                if unit_obs["obs"]["map_features"]["energy"][unit["y"], unit["x"]] == Global.MAX_ENERGY_PER_TILE:
-                    unit_reward += 0.2
-                # Nebula penalty
-                if unit_obs["obs"]["map_features"]["tile_type"][unit["y"], unit["x"]] == 1:
-                    unit_reward -= 0.2
-                # Attack action: if the unit overlaps with an enemy unit and the enemy's energy is lower, 
-                # then reward +1.0 for each eligible enemy unit
-                for enemy in self.enemy_units:
-                    if enemy["x"] == unit["x"] and enemy["y"] == unit["y"]:
-                        if enemy["energy"] < unit["energy"]:
-                            unit_reward += 1.0
-            total_reward += unit_reward
-            # print("################################", file=sys.stderr)
-            # print("step:", self.current_step)
-            # print("")
-            # print(total_reward, file=sys.stderr)
-
-        # Global exploration reward: based on the newly discovered tiles in the combined vision of allied units
-        union_mask = self.get_global_sensor_mask()
-        new_tiles = union_mask & (~self.visited)
-        num_new = np.sum(new_tiles)
-        if num_new > 0:
-            total_reward += 0.2 * num_new
-        self.visited[new_tiles] = True
-
-        # Every 3 steps, spawn a new unit (if the maximum number of units is not reached)
-        if self.current_step % 3 == 0:
-            if len(self.team_units) < MAX_UNITS:
-                self._spawn_unit(team=0)
-            if len(self.enemy_units) < MAX_UNITS:
-                self._spawn_unit(team=1)
-
-        # Every 20 steps, shift the entire map, relic map, and energy map, as well as enemy unit positions 
-        # (shift right by 1 tile, with boundary checks for enemy units)
-        if self.current_step % 20 == 0:
-            # Here, np.roll is used to keep the internal map data unchanged, 
-            # but for enemy units we perform boundary checking
-            self.tile_map = np.roll(self.tile_map, shift=1, axis=1)
-            self.relic_map = np.roll(self.relic_map, shift=1, axis=1)
-            self.energy_map = np.roll(self.energy_map, shift=1, axis=1)
-            for enemy in self.enemy_units:
-                new_ex = enemy["x"] + 1
-                if new_ex >= SPACE_SIZE:
-                    new_ex = enemy["x"]  # Remain unchanged
-                enemy["x"] = new_ex
-
-        # At the end of the step, calculate the increase in self.score
-        score_increase = self.score - prev_score
-    
-        # Combine the total reward: total_reward * 0.5 + score_increase * 0.5
-        final_reward = total_reward * 0.5 + score_increase * 0.5
-        # final_reward = score_increase
-        
-        done = self.current_step >= self.max_steps
-        # done = self.current_step >= 200
-        info = {"score": self.score, "step": self.current_step}
-        return self.get_obs(), final_reward, done, info
+                    info["winner"] = "tie"
+        return obs, rewards, done, info
 
     def render(self, mode='human'):
-        display = self.tile_map.astype(str).copy()
-        for unit in self.team_units:
-            display[unit["y"], unit["x"]] = 'A'
-        print("Step:", self.current_step)
-        print(display)
+        """Simple textual rendering of the map state."""
+        if mode != 'human':
+            return
+        symbols = {0: '.', 1: '#', 2: '~', 3: 'E', 4: 'R'}
+        # Overlay units on map
+        render_map = [[symbols[self.map_tiles[i, j]] for j in range(self.map_size)] for i in range(self.map_size)]
+        # Mark units by team (0 or 1)
+        for pid, symbol in zip(["player_0", "player_1"], ['0', '1']):
+            for alive, x, y, energy in self.units[pid]:
+                if alive == 1:
+                    render_map[x][y] = symbol
+        output = "\n".join("".join(row) for row in render_map)
+        print(output)
+        print(f"Points: P0={self.points['player_0']}  P1={self.points['player_1']}")
+
