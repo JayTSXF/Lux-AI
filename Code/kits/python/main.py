@@ -23,17 +23,16 @@ def agent_fn(observation, configurations):
     player = observation.player
     remainingOverageTime = observation.remainingOverageTime
     if step == 0:
-        agent_dict[player] = Agent(player, configurations["env_cfg"])
+        agent_dict[player] = Agent()
     if "__raw_path__" in configurations:
         dirname = os.path.dirname(configurations["__raw_path__"])
     else:
         dirname = os.path.dirname(__file__)
 
     sys.path.append(os.path.abspath(dirname))
-
     agent = agent_dict[player]
     actions = agent.act(step, from_json(obs), remainingOverageTime)
-    return dict(action=actions.tolist())
+    return dict(action=actions)
 if __name__ == "__main__":
     
     def read_input():
