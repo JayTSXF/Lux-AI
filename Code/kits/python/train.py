@@ -1,5 +1,3 @@
-# train_bc.py
-
 import os
 import json
 import numpy as np
@@ -103,4 +101,4 @@ model.summary()
 # 5) Train & save
 model.fit(X, y, epochs=10, batch_size=64, validation_split=0.1, shuffle=True)
 model.save("model/ppo_game_env_model-immitation.keras")  # creates a folder bc_model/ with the SavedModel
-print("✍️  Behavior cloning model saved to bc_model/")
+print(" Behavior cloning model saved to bc_model/")

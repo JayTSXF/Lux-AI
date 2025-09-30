@@ -1,6 +1,4 @@
 from enum import IntEnum
-
-
 class Global:
 
     # Game related constants:

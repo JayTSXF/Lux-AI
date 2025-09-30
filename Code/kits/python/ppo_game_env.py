@@ -22,14 +22,14 @@ class LuxAI_S3_Env(gym.Env):
         self.init_unit_energy = 100
         self.max_unit_energy = 400
         self.min_unit_energy = 0
-        self.unit_move_cost = 2         # cost to move (except staying)&#8203;:contentReference[oaicite:22]{index=22}
-        self.unit_sap_cost = 10        # energy cost to perform a sap&#8203;:contentReference[oaicite:23]{index=23}
-        self.unit_sap_range = 4        # sap range (Chebyshev distance)&#8203;:contentReference[oaicite:24]{index=24}
-        self.unit_sap_dropoff = 0.5    # dropoff factor for adjacent sap effect&#8203;:contentReference[oaicite:25]{index=25}
-        self.unit_sensor_range = 2     # sensor range for vision&#8203;:contentReference[oaicite:26]{index=26}
-        self.nebula_vision_reduction = 1  # vision reduction per nebula tile&#8203;:contentReference[oaicite:27]{index=27}
-        self.nebula_energy_reduction = 0  # energy reduction per step on nebula&#8203;:contentReference[oaicite:28]{index=28}
-        self.unit_energy_void_factor = 0.125  # factor for void field strength&#8203;:contentReference[oaicite:29]{index=29}
+        self.unit_move_cost = 2         # cost to move (except staying)
+        self.unit_sap_cost = 10        # energy cost to perform a sap
+        self.unit_sap_range = 4        # sap range (Chebyshev distance)
+        self.unit_sap_dropoff = 0.5    # dropoff factor for adjacent sap effect
+        self.unit_sensor_range = 2     # sensor range for vision
+        self.nebula_vision_reduction = 1  # vision reduction per nebula tile
+        self.nebula_energy_reduction = 0  # energy reduction per step on nebula
+        self.unit_energy_void_factor = 0.125  # factor for void field strength
         # Map representation
         # We'll use numeric codes for tile types:
         # 0 = empty, 1 = asteroid, 2 = nebula, 3 = energy node, 4 = relic node
@@ -93,7 +93,7 @@ class LuxAI_S3_Env(gym.Env):
         self.energy_field = np.zeros((self.map_size, self.map_size), dtype=np.float32)
         self.relic_mask = np.zeros((self.map_size, self.map_size), dtype=bool)
         # Generate terrain and objects symmetrically
-        # 1. Asteroids (impassable)&#8203;:contentReference[oaicite:30]{index=30}
+        # 1. Asteroids (impassable)
         placed = set()
         num_asteroids = 10
         for _ in range(num_asteroids):
@@ -107,7 +107,7 @@ class LuxAI_S3_Env(gym.Env):
             placed.add((x, y)); placed.add(sym)
             self.map_tiles[x, y] = 1  # asteroid
             self.map_tiles[sym[0], sym[1]] = 1
-        # 2. Nebula (passable, vision/energy reduction)&#8203;:contentReference[oaicite:31]{index=31}&#8203;:contentReference[oaicite:32]{index=32}
+        # 2. Nebula (passable, vision/energy reduction)
         placed = set()
         num_nebula = 10
         for _ in range(num_nebula):
@@ -121,7 +121,7 @@ class LuxAI_S3_Env(gym.Env):
             placed.add((x, y)); placed.add(sym)
             self.map_tiles[x, y] = 2  # nebula
             self.map_tiles[sym[0], sym[1]] = 2
-        # 3. Energy Nodes (provide energy field)&#8203;:contentReference[oaicite:33]{index=33}
+        # 3. Energy Nodes (provide energy field)
         energy_node_positions = []
         num_energy = 3
         for _ in range(num_energy):
@@ -143,13 +143,13 @@ class LuxAI_S3_Env(gym.Env):
                     contrib = max(0, max_e - dist)
                     self.energy_field[i, j] += contrib
         self.energy_field = np.clip(self.energy_field, 0, 20)
-        # 4. Relic Nodes (hidden scoring tiles)&#8203;:contentReference[oaicite:34]{index=34}
+        # 4. Relic Nodes (hidden scoring tiles)
         x = self._np_random.integers(5, self.map_size-5)
         y = self._np_random.integers(5, self.map_size-5)
         sym = (self.map_size - 1 - x, self.map_size - 1 - y)
         if self.map_tiles[x, y] == 0 and (x, y) != sym:
             self.map_tiles[x, y] = 4; self.map_tiles[sym[0], sym[1]] = 4
-            # Generate a random 5x5 mask of scoring tiles around each relic node&#8203;:contentReference[oaicite:35]{index=35}
+            # Generate a random 5x5 mask of scoring tiles around each relic node
             mask_size = 5
             mask = self._np_random.random((mask_size, mask_size)) < 0.2  # 20% chance each
             cx, cy = x, y; sx, sy = sym
@@ -183,7 +183,7 @@ class LuxAI_S3_Env(gym.Env):
         obs = {}
         for pid in ["player_0", "player_1"]:
             visible = np.zeros((self.map_size, self.map_size), dtype=bool)
-            # Compute team vision mask&#8203;:contentReference[oaicite:36]{index=36}&#8203;:contentReference[oaicite:37]{index=37}
+            # Compute team vision mask
             for alive, ux, uy, energy in self.units[pid]:
                 if alive == 0:
                     continue
@@ -195,7 +195,7 @@ class LuxAI_S3_Env(gym.Env):
                             # Vision power decreases with distance
                             vis_power = 1 + self.unit_sensor_range - max(abs(dx), abs(dy))
                             if dx == 0 and dy == 0:
-                                vis_power += 10  # ensure unit sees itself&#8203;:contentReference[oaicite:38]{index=38}
+                                vis_power += 10  # ensure unit sees itself
                             if self.map_tiles[tx, ty] == 2:  # nebula tile causes vision reduction
                                 vis_power -= self.nebula_vision_reduction
                             if vis_power > 0:
@@ -290,11 +290,11 @@ class LuxAI_S3_Env(gym.Env):
                     elif energy >= self.unit_move_cost:
                         new_x, new_y = x + dx, y + dy
                         if new_x < 0 or new_x >= self.map_size or new_y < 0 or new_y >= self.map_size:
-                            # Move off map: no movement, but energy consumed&#8203;:contentReference[oaicite:40]{index=40}
+                            # Move off map: no movement, but energy consumed
                             self.units[pid][uid, 3] = energy - self.unit_move_cost
                             wasted_energy[pid] += self.unit_move_cost
                         elif self.map_tiles[new_x, new_y] == 1:
-                            # Move into asteroid: blocked, energy consumed&#8203;:contentReference[oaicite:41]{index=41}
+                            # Move into asteroid: blocked, energy consumed
                             self.units[pid][uid, 3] = energy - self.unit_move_cost
                             wasted_energy[pid] += self.unit_move_cost
                         else:
@@ -330,7 +330,7 @@ class LuxAI_S3_Env(gym.Env):
                     # Enough energy to perform sap
                     self.units[pid][uid, 3] = energy - self.unit_sap_cost  # spend energy
                     target_x, target_y = x + dx, y + dy
-                    # Direct sap on target tile (within range square)&#8203;:contentReference[oaicite:43]{index=43}
+                    # Direct sap on target tile (within range square)
                     if 0 <= target_x < self.map_size and 0 <= target_y < self.map_size:
                         for eid, (e_alive, ex, ey, e_energy) in enumerate(self.units[opp]):
                             if e_alive == 1 and ex == target_x and ey == target_y:
@@ -364,7 +364,7 @@ class LuxAI_S3_Env(gym.Env):
                 else:
                     # Not enough energy to sap – invalid action
                     invalid_actions[pid] += 1
-        # Phase 3: Collisions (resolve units on same tile)&#8203;:contentReference[oaicite:45]{index=45}
+        # Phase 3: Collisions (resolve units on same tile)
         removed = {"player_0": [False]*self.max_units, "player_1": [False]*self.max_units}
         # Map positions to lists of units from each team
         pos_to_units = {}
@@ -376,7 +376,7 @@ class LuxAI_S3_Env(gym.Env):
                     pos_to_units[pos][pid].append(uid)
         for pos, teams in pos_to_units.items():
             if teams["player_0"] and teams["player_1"]:
-                # Both teams have units on this tile, determine outcome by total energy&#8203;:contentReference[oaicite:46]{index=46}
+                # Both teams have units on this tile, determine outcome by total energy
                 total_p0 = sum(energy_after_move["player_0"][uid] for uid in teams["player_0"])
                 total_p1 = sum(energy_after_move["player_1"][uid] for uid in teams["player_1"])
                 if total_p0 > total_p1:
@@ -397,14 +397,14 @@ class LuxAI_S3_Env(gym.Env):
                     for uid in teams["player_1"]:
                         self.units["player_1"][uid, 0] = 0
                         removed["player_1"][uid] = True
-        # Energy Void Fields (passive sapping around each unit)&#8203;:contentReference[oaicite:47]{index=47}
+        # Energy Void Fields (passive sapping around each unit)
         void_map_p0 = np.zeros((self.map_size, self.map_size), dtype=int)
         void_map_p1 = np.zeros((self.map_size, self.map_size), dtype=int)
         # Each surviving unit contributes to enemy void map on adjacent tiles
         for uid, (alive, x, y, energy) in enumerate(self.units["player_0"]):
             if alive == 1 and not removed["player_0"][uid]:
                 e = energy_after_move["player_0"][uid]
-                void_strength = int(e * self.unit_energy_void_factor)  # energy contribution&#8203;:contentReference[oaicite:48]{index=48}
+                void_strength = int(e * self.unit_energy_void_factor)  # energy contribution
                 for dx, dy in [(1,0),(-1,0),(0,1),(0,-1)]:  # cardinal neighbors
                     nx, ny = x+dx, y+dy
                     if 0 <= nx < self.map_size and 0 <= ny < self.map_size:
@@ -423,24 +423,24 @@ class LuxAI_S3_Env(gym.Env):
                 if alive == 1 and not removed[pid][uid]:
                     # total void strength from opponent affecting this tile
                     V = void_map_p1[x, y] if pid == "player_0" else void_map_p0[x, y]
-                    # number of same-team units on this tile (share damage)&#8203;:contentReference[oaicite:49]{index=49}
+                    # number of same-team units on this tile (share damage)
                     count = sum(1 for (a, ux, uy, en) in self.units[pid] if a == 1 and ux == x and uy == y)
                     if count > 0:
                         damage = V // count
                         self.units[pid][uid, 3] = energy - damage
-        # Remove units with energy < 0 (killed by sap or void)&#8203;:contentReference[oaicite:50]{index=50}
+        # Remove units with energy < 0 (killed by sap or void)
         for pid in ["player_0", "player_1"]:
             for uid, (alive, x, y, energy) in enumerate(self.units[pid]):
                 if alive == 1 and energy < 0:
                     self.units[pid][uid, 0] = 0
-        # Phase 4: Environment effects – energy recharge and nebula drain&#8203;:contentReference[oaicite:51]{index=51}&#8203;:contentReference[oaicite:52]{index=52}
+        # Phase 4: Environment effects – energy recharge and nebula drain
         for pid in ["player_0", "player_1"]:
             for uid, (alive, x, y, energy) in enumerate(self.units[pid]):
                 if alive == 1:
-                    # Nebula tile causes energy reduction (not below 0)&#8203;:contentReference[oaicite:53]{index=53}
+                    # Nebula tile causes energy reduction (not below 0)
                     if self.map_tiles[x, y] == 2:
                         energy = max(0, energy - self.nebula_energy_reduction)
-                    # Energy field recharge from energy nodes&#8203;:contentReference[oaicite:54]{index=54}
+                    # Energy field recharge from energy nodes}
                     energy += int(self.energy_field[x, y])
                     # Cap energy at max limit
                     if energy > self.max_unit_energy:
@@ -470,7 +470,7 @@ class LuxAI_S3_Env(gym.Env):
                     positions.add(pos)
                     if self.relic_mask[x, y]:
                         points_gained[pid] += 1
-                        # Each unique scoring tile yields at most one point per turn&#8203;:contentReference[oaicite:56]{index=56}
+                        # Each unique scoring tile yields at most one point per turn
             self.points[pid] += points_gained[pid]
         # Calculate rewards for this step
         for pid in ["player_0", "player_1"]:
